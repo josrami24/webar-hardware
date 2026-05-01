@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Tour AR · Hardware del portátil</title>
+
+  <!-- A-Frame para escena AR declarativa -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <!-- MindAR para image tracking sobre A-Frame -->
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <!-- Three.js + OrbitControls + GLTFLoader para el visor 3D -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --bg: #0a0e1a;
+      --panel: rgba(12, 18, 30, 0.92);
+      --accent: #00e5ff;
+      --accent-soft: rgba(0, 229, 255, 0.15);
+      --text: #e8f4ff;
+      --text-dim: #7a8fa8;
+      --border: rgba(0, 229, 255, 0.25);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      background: #000;
+      color: var(--text);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* Pantalla de inicio */
+    #intro-screen {
+      position: fixed; inset: 0; z-index: 1000;
+      background: linear-gradient(135deg, #0a0e1a 0%, #1a2438 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px; text-align: center;
+    }
+    #intro-screen h1 {
+      font-size: 1.6rem; margin-bottom: 12px;
+      letter-spacing: 2px; text-transform: uppercase;
+      color: var(--accent);
+    }
+    #intro-screen p {
+      color: var(--text-dim); max-width: 320px; line-height: 1.6; margin-bottom: 32px;
+      font-size: 0.9rem;
+    }
+    #start-btn {
+      background: var(--accent); color: #000; border: none;
+      padding: 14px 32px; font-size: 1rem; font-weight: 700;
+      font-family: inherit; letter-spacing: 1px; text-transform: uppercase;
+      cursor: pointer; border-radius: 4px;
+      box-shadow: 0 0 30px rgba(0, 229, 255, 0.5);
+    }
+    .scan-icon {
+      width: 80px; height: 80px; margin-bottom: 24px;
+      border: 2px solid var(--accent);
+      position: relative;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    .scan-icon::before, .scan-icon::after {
+      content: ''; position: absolute;
+      width: 20px; height: 20px;
+      border: 3px solid var(--accent);
+    }
+    .scan-icon::before { top: -3px; left: -3px; border-right: none; border-bottom: none; }
+    .scan-icon::after { bottom: -3px; right: -3px; border-left: none; border-top: none; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    /* Indicador de búsqueda de marcador */
+    #scanning-hint {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: var(--panel); padding: 16px 24px; border-radius: 8px;
+      border: 1px solid var(--border);
+      z-index: 50; pointer-events: none;
+      display: none;
+    }
+    #scanning-hint.visible { display: block; }
+
+    /* Menú flotante de componentes */
+    #component-menu {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--panel); backdrop-filter: blur(10px);
+      border-top: 1px solid var(--border);
+      padding: 12px 8px 16px;
+      z-index: 100;
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+    }
+    #component-menu.visible { transform: translateY(0); }
+    #component-menu .label {
+      font-size: 0.7rem; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 2px;
+      padding: 0 12px 8px; display: block;
+    }
+    #component-list {
+      display: flex; gap: 8px; overflow-x: auto;
+      padding: 0 12px 4px;
+      scrollbar-width: none;
+    }
+    #component-list::-webkit-scrollbar { display: none; }
+    .comp-btn {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text); padding: 10px 16px; border-radius: 4px;
+      font-family: inherit; font-size: 0.8rem;
+      white-space: nowrap; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .comp-btn:active { background: var(--accent-soft); border-color: var(--accent); }
+
+    /* Modal del visor 3D */
+    #viewer-modal {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px);
+      display: none; flex-direction: column;
+    }
+    #viewer-modal.visible { display: flex; }
+
+    #viewer-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+    }
+    #comp-name {
+      font-size: 1.1rem; color: var(--accent);
+      letter-spacing: 1px; text-transform: uppercase;
+    }
+    #close-btn {
+      background: none; border: 1px solid var(--border); color: var(--text);
+      width: 36px; height: 36px; border-radius: 50%;
+      font-size: 1.2rem; cursor: pointer; font-family: inherit;
+    }
+
+    #viewer-3d {
+      flex: 1; min-height: 0;
+      position: relative;
+      background: radial-gradient(circle at center, #1a2438 0%, #000 100%);
+    }
+    #viewer-3d canvas { display: block; touch-action: none; }
+
+    #viewer-hint {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      font-size: 0.7rem; color: var(--text-dim);
+      letter-spacing: 1px; text-transform: uppercase;
+      pointer-events: none;
+    }
+
+    #comp-info {
+      max-height: 35vh; overflow-y: auto;
+      padding: 16px 20px 24px;
+      border-top: 1px solid var(--border);
+      background: var(--panel);
+    }
+    #comp-info h3 {
+      font-size: 0.7rem; color: var(--accent);
+      text-transform: uppercase; letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+    #comp-desc {
+      font-size: 0.9rem; line-height: 1.6; color: var(--text);
+      font-family: 'Georgia', serif;
+    }
+    #comp-specs {
+      margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border);
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+      font-size: 0.75rem;
+    }
+    #comp-specs div { color: var(--text-dim); }
+    #comp-specs strong { color: var(--text); display: block; }
+  </style>
+</head>
+<body>
+
+  <!-- ESCENA AR -->
+  <a-scene
+    mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiScanning: no; uiLoading: no;"
+    color-space="sRGB"
+    renderer="colorManagement: true, physicallyCorrectLights"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <a-assets>
+      <!-- Imagen del interior del portátil que se sobrepondrá al teclado -->
+      <img id="hardwareImg" src="./hardware.png" crossorigin="anonymous">
+    </a-assets>
+
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!-- Target 0 = el QR. Cuando MindAR lo detecta, todo lo que está adentro aparece. -->
+    <a-entity id="target" mindar-image-target="targetIndex: 0">
+
+      <!-- Plano con la foto del interior. Ajusta width/height según las proporciones reales del QR vs. teclado -->
+      <a-plane
+        src="#hardwareImg"
+        position="0 0 0"
+        height="0.72"
+        width="1"
+        opacity="0.95"
+        material="transparent: true">
+      </a-plane>
+
+      <!-- HOTSPOTS: puntos brillantes sobre cada componente.
+           Las posiciones están en el espacio del plano (centro = 0,0).
+           x: izquierda(-) a derecha(+), y: abajo(-) a arriba(+).
+           Plano de 1.0 ancho × 0.72 alto -> rangos: x [-0.5, 0.5], y [-0.36, 0.36] -->
+
+      <a-entity class="hotspot" data-component="motherboard" position="-0.32 0.10 0.01">
+        <a-circle radius="0.035" color="#00e5ff" opacity="0.7"></a-circle>
+        <a-ring radius-inner="0.04" radius-outer="0.05" color="#00e5ff" opacity="0.5"
+                animation="property: scale; from: 1 1 1; to: 1.4 1.4 1.4; dir: alternate; loop: true; dur: 1200"></a-ring>
+      </a-entity>
+
+      <a-entity class="hotspot" data-component="cpu" position="-0.05 0.20 0.01">
+        <a-circle radius="0.035" color="#ff6b35" opacity="0.7"></a-circle>
+        <a-ring radius-inner="0.04" radius-outer="0.05" color="#ff6b35" opacity="0.5"
+                animation="property: scale; from: 1 1 1; to: 1.4 1.4 1.4; dir: alternate; loop: true; dur: 1200"></a-ring>
+      </a-entity>
+
+      <a-entity class="hotspot" data-component="heatsink" position="0.05 0.10 0.01">
+        <a-circle radius="0.035" color="#ffaa00" opacity="0.7"></a-circle>
+      </a-entity>
+
+      <a-entity class="hotspot" data-component="fan" position="0.32 0.05 0.01">
+        <a-circle radius="0.035" color="#00ff88" opacity="0.7"></a-circle>
+        <a-ring radius-inner="0.04" radius-outer="0.05" color="#00ff88" opacity="0.5"
+                animation="property: scale; from: 1 1 1; to: 1.4 1.4 1.4; dir: alternate; loop: true; dur: 1200"></a-ring>
+      </a-entity>
+
+      <a-entity class="hotspot" data-component="ssd" position="0.05 0.28 0.01">
+        <a-circle radius="0.035" color="#bb88ff" opacity="0.7"></a-circle>
+      </a-entity>
+
+      <a-entity class="hotspot" data-component="battery" position="0 -0.15 0.01">
+        <a-circle radius="0.035" color="#ffeb3b" opacity="0.7"></a-circle>
+        <a-ring radius-inner="0.04" radius-outer="0.05" color="#ffeb3b" opacity="0.5"
+                animation="property: scale; from: 1 1 1; to: 1.4 1.4 1.4; dir: alternate; loop: true; dur: 1200"></a-ring>
+      </a-entity>
+
+    </a-entity>
+  </a-scene>
+
+  <!-- PANTALLA DE INICIO -->
+  <div id="intro-screen">
+    <div class="scan-icon"></div>
+    <h1>Tour AR · Hardware</h1>
+    <p>Apunta la cámara hacia el código QR ubicado en el teclado del portátil para iniciar la experiencia.</p>
+    <button id="start-btn">Iniciar cámara</button>
+  </div>
+
+  <!-- HINT DE ESCANEO -->
+  <div id="scanning-hint">
+    <span style="color: var(--text-dim); font-size: 0.75rem; letter-spacing: 1px;">BUSCANDO MARCADOR...</span>
+  </div>
+
+  <!-- MENÚ DE COMPONENTES -->
+  <div id="component-menu">
+    <span class="label">Selecciona un componente</span>
+    <div id="component-list"></div>
+  </div>
+
+  <!-- MODAL VISOR 3D -->
+  <div id="viewer-modal">
+    <div id="viewer-header">
+      <span id="comp-name">—</span>
+      <button id="close-btn">✕</button>
+    </div>
+    <div id="viewer-3d">
+      <span id="viewer-hint">Arrastra para rotar · Pellizca para zoom</span>
+    </div>
+    <div id="comp-info">
+      <h3>Descripción</h3>
+      <p id="comp-desc"></p>
+      <div id="comp-specs"></div>
+    </div>
+  </div>
+
+  <!-- LÓGICA -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    // ============================================
+    // BASE DE DATOS DE COMPONENTES
+    // Aquí defines cada componente: nombre, descripción, geometría 3D (o ruta a un .glb)
+    // ============================================
+    const components = {
+      motherboard: {
+        name: "Placa madre",
+        desc: "La placa madre es el circuito principal que conecta todos los componentes del portátil. Aloja el chipset, distribuye la energía, gestiona la comunicación entre el procesador, la memoria, el almacenamiento y los periféricos.",
+        specs: { "Tipo": "PCB multicapa", "Función": "Interconexión central", "Alimenta": "Todos los módulos" },
+        build: () => buildMotherboard()
+      },
+      cpu: {
+        name: "Procesador (CPU)",
+        desc: "El cerebro del portátil. Ejecuta instrucciones de los programas y realiza los cálculos. Está soldado a la placa y trabaja a temperaturas elevadas, por eso necesita el disipador y el ventilador.",
+        specs: { "Función": "Procesamiento", "Cores": "Múltiples núcleos", "Refrigeración": "Heatsink + fan" },
+        build: () => buildCPU()
+      },
+      heatsink: {
+        name: "Disipador térmico",
+        desc: "Estructura de cobre o aluminio con tubos de calor (heatpipes) que conduce el calor desde el CPU/GPU hacia las aletas, donde el ventilador lo expulsa. Sin él, el procesador se sobrecalentaría en segundos.",
+        specs: { "Material": "Cobre + aluminio", "Tecnología": "Heatpipes", "Función": "Refrigeración pasiva" },
+        build: () => buildHeatsink()
+      },
+      fan: {
+        name: "Ventilador",
+        desc: "Empuja el aire a través del disipador para expulsar el calor fuera del chasis. Su velocidad varía según la temperatura del CPU, controlada por el firmware del sistema.",
+        specs: { "Tipo": "Radial blower", "RPM": "Variable", "Control": "PWM por BIOS" },
+        build: () => buildFan()
+      },
+      ssd: {
+        name: "SSD M.2 NVMe",
+        desc: "Unidad de almacenamiento de estado sólido con interfaz M.2. Mucho más rápida que un disco mecánico, almacena el sistema operativo, programas y archivos del usuario.",
+        specs: { "Formato": "M.2 2280", "Interfaz": "PCIe NVMe", "Ventaja": "Alta velocidad" },
+        build: () => buildSSD()
+      },
+      battery: {
+        name: "Batería de Ion-Litio",
+        desc: "Suministra energía al portátil cuando no está conectado a la corriente. Esta batería es de polímero de litio (Li-Po) de 75 Wh, recargable y con celdas múltiples integradas.",
+        specs: { "Tecnología": "Li-Polymer", "Capacidad": "75 Wh", "Voltaje": "15.56 V" },
+        build: () => buildBattery()
+      }
+    };
+
+    // ============================================
+    // GEOMETRÍAS 3D ESTILIZADAS
+    // Reemplaza estos modelos por GLB reales con loadGLB('ruta.glb')
+    // ============================================
+
+    function buildMotherboard() {
+      const group = new THREE.Group();
+      const board = new THREE.Mesh(
+        new THREE.BoxGeometry(2.4, 0.08, 1.6),
+        new THREE.MeshStandardMaterial({ color: 0x0a4d3c, roughness: 0.5, metalness: 0.3 })
+      );
+      group.add(board);
+      // Chips
+      for (let i = 0; i < 6; i++) {
+        const chip = new THREE.Mesh(
+          new THREE.BoxGeometry(0.3 + Math.random() * 0.2, 0.06, 0.3 + Math.random() * 0.2),
+          new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4 })
+        );
+        chip.position.set((Math.random() - 0.5) * 1.8, 0.07, (Math.random() - 0.5) * 1.2);
+        group.add(chip);
+      }
+      // Conectores dorados
+      for (let i = 0; i < 4; i++) {
+        const conn = new THREE.Mesh(
+          new THREE.BoxGeometry(0.15, 0.04, 0.6),
+          new THREE.MeshStandardMaterial({ color: 0xc9a44c, metalness: 0.9, roughness: 0.3 })
+        );
+        conn.position.set(-1 + i * 0.3, 0.06, 0.5);
+        group.add(conn);
+      }
+      return group;
+    }
+
+    function buildCPU() {
+      const group = new THREE.Group();
+      const base = new THREE.Mesh(
+        new THREE.BoxGeometry(1.4, 0.1, 1.4),
+        new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7 })
+      );
+      const die = new THREE.Mesh(
+        new THREE.BoxGeometry(0.9, 0.05, 0.9),
+        new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9, roughness: 0.2 })
+      );
+      die.position.y = 0.075;
+      group.add(base, die);
+      return group;
+    }
+
+    function buildHeatsink() {
+      const group = new THREE.Group();
+      const base = new THREE.Mesh(
+        new THREE.BoxGeometry(2, 0.15, 1.2),
+        new THREE.MeshStandardMaterial({ color: 0xb87333, metalness: 0.85, roughness: 0.3 })
+      );
+      group.add(base);
+      // Aletas
+      for (let i = 0; i < 20; i++) {
+        const fin = new THREE.Mesh(
+          new THREE.BoxGeometry(0.04, 0.5, 1.1),
+          new THREE.MeshStandardMaterial({ color: 0xb87333, metalness: 0.9, roughness: 0.25 })
+        );
+        fin.position.set(-0.95 + i * 0.1, 0.32, 0);
+        group.add(fin);
+      }
+      // Heatpipe
+      const pipe = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.08, 2.3, 16),
+        new THREE.MeshStandardMaterial({ color: 0xc9a44c, metalness: 0.95, roughness: 0.15 })
+      );
+      pipe.rotation.z = Math.PI / 2;
+      pipe.position.y = 0.1;
+      group.add(pipe);
+      return group;
+    }
+
+    function buildFan() {
+      const group = new THREE.Group();
+      const housing = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.2, 1.2, 0.25, 32),
+        new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 })
+      );
+      const hub = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.3, 0.3, 0.3, 16),
+        new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.7 })
+      );
+      hub.position.y = 0.15;
+      group.add(housing, hub);
+      // Aspas
+      const blades = new THREE.Group();
+      for (let i = 0; i < 9; i++) {
+        const blade = new THREE.Mesh(
+          new THREE.BoxGeometry(0.85, 0.02, 0.18),
+          new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5 })
+        );
+        blade.position.x = 0.5;
+        blade.rotation.y = 0.3;
+        const arm = new THREE.Group();
+        arm.add(blade);
+        arm.rotation.y = (i / 9) * Math.PI * 2;
+        blades.add(arm);
+      }
+      blades.position.y = 0.18;
+      blades.userData.isFanBlades = true;
+      group.add(blades);
+      return group;
+    }
+
+    function buildSSD() {
+      const group = new THREE.Group();
+      const board = new THREE.Mesh(
+        new THREE.BoxGeometry(2.2, 0.06, 0.6),
+        new THREE.MeshStandardMaterial({ color: 0x0a4d3c, roughness: 0.5 })
+      );
+      const chip1 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.04, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6 })
+      );
+      chip1.position.set(-0.5, 0.05, 0);
+      const chip2 = chip1.clone();
+      chip2.position.x = 0.5;
+      const controller = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, 0.04, 0.3),
+        new THREE.MeshStandardMaterial({ color: 0x222222 })
+      );
+      controller.position.set(0, 0.05, 0);
+      // Conector
+      const connector = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, 0.05, 0.5),
+        new THREE.MeshStandardMaterial({ color: 0xc9a44c, metalness: 0.9, roughness: 0.3 })
+      );
+      connector.position.set(-1.05, 0, 0);
+      group.add(board, chip1, chip2, controller, connector);
+      return group;
+    }
+
+    function buildBattery() {
+      const group = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(2.6, 0.25, 1.4),
+        new THREE.MeshStandardMaterial({ color: 0x222831, roughness: 0.7, metalness: 0.2 })
+      );
+      // Celdas visibles
+      for (let i = 0; i < 3; i++) {
+        const cell = new THREE.Mesh(
+          new THREE.BoxGeometry(0.78, 0.22, 1.3),
+          new THREE.MeshStandardMaterial({ color: 0x1a1f26, roughness: 0.8 })
+        );
+        cell.position.x = -0.85 + i * 0.85;
+        cell.position.y = 0.01;
+        group.add(cell);
+      }
+      // Cable
+      const cable = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04, 0.04, 0.5, 8),
+        new THREE.MeshStandardMaterial({ color: 0xff3030 })
+      );
+      cable.rotation.z = Math.PI / 2;
+      cable.position.set(1.5, 0, 0);
+      group.add(body, cable);
+      return group;
+    }
+
+    // ============================================
+    // INICIO DE LA EXPERIENCIA AR
+    // ============================================
+    const sceneEl = document.querySelector('a-scene');
+    const introScreen = document.getElementById('intro-screen');
+    const startBtn = document.getElementById('start-btn');
+    const scanningHint = document.getElementById('scanning-hint');
+    const componentMenu = document.getElementById('component-menu');
+    const componentList = document.getElementById('component-list');
+
+    // Construir botones del menú
+    Object.entries(components).forEach(([key, comp]) => {
+      const btn = document.createElement('button');
+      btn.className = 'comp-btn';
+      btn.textContent = comp.name;
+      btn.dataset.component = key;
+      btn.addEventListener('click', () => openViewer(key));
+      componentList.appendChild(btn);
+    });
+
+    startBtn.addEventListener('click', async () => {
+      introScreen.style.display = 'none';
+      scanningHint.classList.add('visible');
+      const mindarSystem = sceneEl.systems['mindar-image-system'];
+      await mindarSystem.start();
+    });
+
+    // Eventos cuando se detecta / pierde el marcador
+    const targetEl = document.querySelector('#target');
+    targetEl.addEventListener('targetFound', () => {
+      scanningHint.classList.remove('visible');
+      componentMenu.classList.add('visible');
+    });
+    targetEl.addEventListener('targetLost', () => {
+      scanningHint.classList.add('visible');
+      componentMenu.classList.remove('visible');
+    });
+
+    // Hacer los hotspots tap-eables
+    sceneEl.addEventListener('loaded', () => {
+      document.querySelectorAll('.hotspot').forEach(el => {
+        el.setAttribute('class', 'hotspot clickable');
+        el.addEventListener('click', () => {
+          openViewer(el.dataset.component);
+        });
+      });
+    });
+
+    // ============================================
+    // VISOR 3D MODAL (Three.js + OrbitControls)
+    // ============================================
+    const modal = document.getElementById('viewer-modal');
+    const viewer3D = document.getElementById('viewer-3d');
+    const compName = document.getElementById('comp-name');
+    const compDesc = document.getElementById('comp-desc');
+    const compSpecs = document.getElementById('comp-specs');
+    const closeBtn = document.getElementById('close-btn');
+
+    let renderer, scene3d, camera3d, controls, currentModel, animId;
+
+    function initViewer() {
+      const w = viewer3D.clientWidth;
+      const h = viewer3D.clientHeight;
+
+      scene3d = new THREE.Scene();
+      camera3d = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
+      camera3d.position.set(3, 2.5, 4);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(w, h);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      viewer3D.appendChild(renderer.domElement);
+
+      // Luces
+      scene3d.add(new THREE.AmbientLight(0xffffff, 0.5));
+      const key = new THREE.DirectionalLight(0xffffff, 1);
+      key.position.set(5, 8, 5);
+      scene3d.add(key);
+      const rim = new THREE.DirectionalLight(0x00e5ff, 0.4);
+      rim.position.set(-5, 2, -5);
+      scene3d.add(rim);
+
+      // Controles táctiles: rotar (1 dedo), zoom (pellizco), pan (2 dedos)
+      controls = new OrbitControls(camera3d, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.minDistance = 2;
+      controls.maxDistance = 12;
+      controls.touches = {
+        ONE: THREE.TOUCH.ROTATE,
+        TWO: THREE.TOUCH.DOLLY_PAN
+      };
+
+      window.addEventListener('resize', onResize);
+    }
+
+    function onResize() {
+      if (!renderer || !modal.classList.contains('visible')) return;
+      const w = viewer3D.clientWidth;
+      const h = viewer3D.clientHeight;
+      camera3d.aspect = w / h;
+      camera3d.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+
+    function animate() {
+      animId = requestAnimationFrame(animate);
+      controls.update();
+      // Animar aspas del ventilador si están presentes
+      if (currentModel) {
+        currentModel.traverse(obj => {
+          if (obj.userData.isFanBlades) obj.rotation.y += 0.05;
+        });
+      }
+      renderer.render(scene3d, camera3d);
+    }
+
+    function openViewer(key) {
+      const comp = components[key];
+      if (!comp) return;
+
+      compName.textContent = comp.name;
+      compDesc.textContent = comp.desc;
+      compSpecs.innerHTML = Object.entries(comp.specs)
+        .map(([k, v]) => `<div><strong>${v}</strong>${k}</div>`)
+        .join('');
+
+      modal.classList.add('visible');
+
+      if (!renderer) initViewer();
+
+      // Limpiar modelo anterior
+      if (currentModel) {
+        scene3d.remove(currentModel);
+        currentModel.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) obj.material.dispose();
+        });
+      }
+
+      currentModel = comp.build();
+      scene3d.add(currentModel);
+      controls.reset();
+      camera3d.position.set(3, 2.5, 4);
+
+      // Ajustar tamaño del canvas tras mostrar modal
+      setTimeout(onResize, 50);
+
+      if (!animId) animate();
+    }
+
+    function closeViewer() {
+      modal.classList.remove('visible');
+      cancelAnimationFrame(animId);
+      animId = null;
+    }
+
+    closeBtn.addEventListener('click', closeViewer);
+
+    // Para cargar modelos GLB reales en el futuro:
+    // const loader = new GLTFLoader();
+    // loader.load('models/cpu.glb', (gltf) => { ... });
+  </script>
+</body>
+</html>
