@@ -247,6 +247,55 @@
                 animation="property: scale; from: 1 1 1; to: 1.4 1.4 1.4; dir: alternate; loop: true; dur: 1200"></a-ring>
       </a-entity>
 
+      <!-- MODELOS AR SIMPLIFICADOS (aparecen encima del teclado cuando se detecta el QR) -->
+      <a-entity id="ar-components" visible="false">
+        <!-- Motherboard (placa) -->
+        <a-entity id="ar-motherboard" class="ar-comp" position="-0.32 0.22 0.02" scale="0.2 0.2 0.2">
+          <a-box depth="1.6" height="0.08" width="2.4" color="#0a4d3c"></a-box>
+          <!-- chips decorativos -->
+          <a-box position="-0.5 0.08 0.3" width="0.3" height="0.06" depth="0.3" color="#222"></a-box>
+          <a-box position="0.4 0.08 -0.2" width="0.35" height="0.06" depth="0.35" color="#222"></a-box>
+        </a-entity>
+
+        <!-- CPU -->
+        <a-entity id="ar-cpu" class="ar-comp" position="-0.05 0.28 0.02" scale="0.14 0.14 0.14">
+          <a-box width="1.4" height="0.1" depth="1.4" color="#111"></a-box>
+          <a-box position="0 0.07 0" width="0.9" height="0.05" depth="0.9" color="#888"></a-box>
+        </a-entity>
+
+        <!-- Heatsink -->
+        <a-entity id="ar-heatsink" class="ar-comp" position="0.05 0.22 0.02" scale="0.18 0.18 0.18">
+          <a-box width="2" height="0.15" depth="1.2" color="#b87333"></a-box>
+          <!-- aletas -->
+          <a-entity position="-0.95 0.32 0">
+            <!-- varias aletas como planos delgados -->
+            <a-box position="0 0 0" width="0.04" height="0.5" depth="1.1" color="#b87333"></a-box>
+            <a-box position="0.1 0 0" width="0.04" height="0.5" depth="1.1" color="#b87333"></a-box>
+            <a-box position="0.2 0 0" width="0.04" height="0.5" depth="1.1" color="#b87333"></a-box>
+          </a-entity>
+        </a-entity>
+
+        <!-- Fan (ventilador) -->
+        <a-entity id="ar-fan" class="ar-comp" position="0.32 0.18 0.02" scale="0.2 0.2 0.2">
+          <a-cylinder radius="1.2" height="0.25" color="#1a1a1a" rotation="90 0 0"></a-cylinder>
+          <a-entity id="fan-blades" rotation="0 0 0" animation="property: rotation; to: 0 360 0; loop: true; dur: 2000; easing: linear">
+            <a-box position="0.5 0 0" width="0.85" height="0.02" depth="0.18" color="#222"></a-box>
+            <a-box rotation="0 40 0" position="0 0 0" width="0.85" height="0.02" depth="0.18" color="#222"></a-box>
+          </a-entity>
+        </a-entity>
+
+        <!-- SSD -->
+        <a-entity id="ar-ssd" class="ar-comp" position="0.05 0.36 0.02" scale="0.18 0.18 0.18">
+          <a-box width="2.2" height="0.06" depth="0.6" color="#0a4d3c"></a-box>
+          <a-box position="-0.5 0.05 0" width="0.5" height="0.04" depth="0.4" color="#111"></a-box>
+        </a-entity>
+
+        <!-- Battery -->
+        <a-entity id="ar-battery" class="ar-comp" position="0 0.02 0.02" scale="0.2 0.2 0.2">
+          <a-box width="2.6" height="0.25" depth="1.4" color="#222831"></a-box>
+        </a-entity>
+      </a-entity>
+
     </a-entity>
   </a-scene>
 
@@ -512,7 +561,7 @@
       btn.className = 'comp-btn';
       btn.textContent = comp.name;
       btn.dataset.component = key;
-      btn.addEventListener('click', () => openViewer(key));
+      btn.addEventListener('click', () => { selectARComponent(key); openViewer(key); });
       componentList.appendChild(btn);
     });
 
@@ -525,13 +574,68 @@
 
     // Eventos cuando se detecta / pierde el marcador
     const targetEl = document.querySelector('#target');
+    const arContainer = document.getElementById('ar-components');
+    const arEls = {};
+    // indexar AR elements (id -> element)
+    document.querySelectorAll('.ar-comp').forEach(el => {
+      const key = el.id.replace('ar-', '');
+      arEls[key] = el;
+      el.setAttribute('visible', 'false');
+    });
+
+    function showARComponents() {
+      arContainer.setAttribute('visible', 'true');
+      Object.values(arEls).forEach(e => e.setAttribute('visible', 'true'));
+    }
+    function hideARComponents() {
+      arContainer.setAttribute('visible', 'false');
+      Object.values(arEls).forEach(e => {
+        e.setAttribute('visible', 'false');
+        e.removeAttribute('animation');
+        e.setAttribute('scale', e.getAttribute('scale')); // keep base scale
+      });
+      removeFloatingLabel();
+    }
+
+    function removeFloatingLabel() {
+      const lbl = document.getElementById('ar-label');
+      if (lbl && lbl.parentNode) lbl.parentNode.removeChild(lbl);
+    }
+
+    function showFloatingLabel(key) {
+      removeFloatingLabel();
+      const target = arEls[key];
+      if (!target) return;
+      const label = document.createElement('a-entity');
+      label.setAttribute('id', 'ar-label');
+      label.setAttribute('position', '0 0.6 0');
+      label.setAttribute('text', `value: ${components[key].name} — ${components[key].desc.split('. ')[0]}; align: center; width: 1.6; color: #e8f4ff;`);
+      target.appendChild(label);
+    }
+
+    function selectARComponent(key) {
+      Object.entries(arEls).forEach(([k, el]) => {
+        if (k === key) {
+          // resaltar
+          el.setAttribute('scale', '0.24 0.24 0.24');
+          el.setAttribute('animation', 'property: rotation; to: 0 10 0; dir: alternate; loop: true; dur: 1200');
+          showFloatingLabel(k);
+        } else {
+          el.setAttribute('scale', '0.18 0.18 0.18');
+          el.removeAttribute('animation');
+        }
+      });
+    }
+
     targetEl.addEventListener('targetFound', () => {
       scanningHint.classList.remove('visible');
       componentMenu.classList.add('visible');
+      showARComponents();
     });
     targetEl.addEventListener('targetLost', () => {
       scanningHint.classList.add('visible');
       componentMenu.classList.remove('visible');
+      hideARComponents();
     });
 
     // Hacer los hotspots tap-eables
@@ -539,6 +643,7 @@
       document.querySelectorAll('.hotspot').forEach(el => {
         el.setAttribute('class', 'hotspot clickable');
         el.addEventListener('click', () => {
+          selectARComponent(el.dataset.component);
           openViewer(el.dataset.component);
         });
       });
