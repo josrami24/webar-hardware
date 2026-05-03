@@ -120,6 +120,70 @@
     }
     .comp-btn:active { background: var(--accent-soft); border-color: var(--accent); }
 
+    #component-info-panel {
+      display: none;
+      padding: 10px 12px 0;
+      color: var(--text);
+    }
+    #component-info-panel.visible { display: block; }
+    #component-info-name {
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 0.78rem;
+      margin-bottom: 6px;
+    }
+    #component-info-desc {
+      font-size: 0.86rem;
+      line-height: 1.5;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+    #component-info-specs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      font-size: 0.72rem;
+    }
+    #component-info-specs div {
+      border: 1px solid rgba(0, 229, 255, 0.14);
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 6px;
+      padding: 8px;
+      color: var(--text-dim);
+    }
+    #component-info-specs strong {
+      color: var(--text);
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    #transform-toolbar {
+      display: none;
+      padding: 10px 12px 0;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    #transform-toolbar.visible { display: flex; }
+    .tool-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font: inherit;
+      font-size: 0.76rem;
+      cursor: pointer;
+    }
+    .tool-btn:active { background: var(--accent-soft); }
+
+    #drag-hint {
+      display: block;
+      margin-top: 8px;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+
     /* Modal del visor 3D */
     #viewer-modal {
       position: fixed; inset: 0; z-index: 200;
@@ -316,6 +380,23 @@
   <div id="component-menu">
     <span class="label">Selecciona un componente</span>
     <div id="component-list"></div>
+    <div id="component-info-panel">
+      <div id="component-info-name"></div>
+      <div id="component-info-desc"></div>
+      <div id="component-info-specs"></div>
+    </div>
+    <div id="transform-toolbar">
+      <button class="tool-btn" data-action="move-left">← Mover</button>
+      <button class="tool-btn" data-action="move-right">Mover →</button>
+      <button class="tool-btn" data-action="move-up">↑ Subir</button>
+      <button class="tool-btn" data-action="move-down">Bajar ↓</button>
+      <button class="tool-btn" data-action="scale-down">- Tamaño</button>
+      <button class="tool-btn" data-action="scale-up">+ Tamaño</button>
+      <button class="tool-btn" data-action="rotate-left">Girar izq</button>
+      <button class="tool-btn" data-action="rotate-right">Girar der</button>
+      <button class="tool-btn" data-action="reset-transform">Reiniciar</button>
+      <span id="drag-hint">Arrastra el componente sobre la escena para moverlo.</span>
+    </div>
   </div>
 
   <!-- MODAL VISOR 3D -->
@@ -554,6 +635,26 @@
     const scanningHint = document.getElementById('scanning-hint');
     const componentMenu = document.getElementById('component-menu');
     const componentList = document.getElementById('component-list');
+    const componentInfoPanel = document.getElementById('component-info-panel');
+    const componentInfoName = document.getElementById('component-info-name');
+    const componentInfoDesc = document.getElementById('component-info-desc');
+    const componentInfoSpecs = document.getElementById('component-info-specs');
+    const transformToolbar = document.getElementById('transform-toolbar');
+
+    const transformState = {
+      key: null,
+      scale: 1,
+      rotationY: 0,
+      position: { x: 0, y: 0, z: 0.02 }
+    };
+
+    const dragState = {
+      active: false,
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      startPosition: { x: 0, y: 0, z: 0.02 }
+    };
 
     // Construir botones del menú
     Object.entries(components).forEach(([key, comp]) => {
@@ -561,8 +662,29 @@
       btn.className = 'comp-btn';
       btn.textContent = comp.name;
       btn.dataset.component = key;
-      btn.addEventListener('click', () => { selectARComponent(key); openViewer(key); });
+      btn.addEventListener('click', () => selectARComponent(key));
       componentList.appendChild(btn);
+    });
+
+    document.querySelectorAll('[data-action]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!transformState.key) return;
+        const action = btn.dataset.action;
+        if (action === 'scale-up') transformState.scale = Math.min(transformState.scale + 0.1, 2.5);
+        if (action === 'scale-down') transformState.scale = Math.max(transformState.scale - 0.1, 0.4);
+        if (action === 'move-left') transformState.position.x -= 0.02;
+        if (action === 'move-right') transformState.position.x += 0.02;
+        if (action === 'move-up') transformState.position.y += 0.02;
+        if (action === 'move-down') transformState.position.y -= 0.02;
+        if (action === 'rotate-left') transformState.rotationY -= 12;
+        if (action === 'rotate-right') transformState.rotationY += 12;
+        if (action === 'reset-transform') {
+          transformState.scale = 1;
+          transformState.rotationY = 0;
+          transformState.position = { ...(defaultPositions[transformState.key] || { x: 0, y: 0, z: 0.02 }) };
+        }
+        applyTransformState();
+      });
     });
 
     startBtn.addEventListener('click', async () => {
@@ -583,9 +705,50 @@
       el.setAttribute('visible', 'false');
     });
 
+    const defaultScales = {
+      motherboard: '0.2 0.2 0.2',
+      cpu: '0.14 0.14 0.14',
+      heatsink: '0.18 0.18 0.18',
+      fan: '0.2 0.2 0.2',
+      ssd: '0.18 0.18 0.18',
+      battery: '0.2 0.2 0.2'
+    };
+
+    const defaultPositions = {
+      motherboard: { x: -0.32, y: 0.22, z: 0.02 },
+      cpu: { x: -0.05, y: 0.28, z: 0.02 },
+      heatsink: { x: 0.05, y: 0.22, z: 0.02 },
+      fan: { x: 0.32, y: 0.18, z: 0.02 },
+      ssd: { x: 0.05, y: 0.36, z: 0.02 },
+      battery: { x: 0, y: 0.02, z: 0.02 }
+    };
+
+    function applyTransformState() {
+      const target = arEls[transformState.key];
+      if (!target) return;
+      const base = defaultScales[transformState.key] || '0.2 0.2 0.2';
+      const baseScale = Number(base.split(' ')[0]) || 0.2;
+      const finalScale = (baseScale * transformState.scale).toFixed(3);
+      target.setAttribute('scale', `${finalScale} ${finalScale} ${finalScale}`);
+      target.setAttribute('rotation', `0 ${transformState.rotationY} 0`);
+      target.setAttribute('position', `${transformState.position.x.toFixed(3)} ${transformState.position.y.toFixed(3)} ${transformState.position.z.toFixed(3)}`);
+      target.setAttribute('visible', 'true');
+    }
+
+    function updateInfoPanel(key) {
+      const comp = components[key];
+      if (!comp) return;
+      componentInfoName.textContent = comp.name;
+      componentInfoDesc.textContent = comp.desc;
+      componentInfoSpecs.innerHTML = Object.entries(comp.specs)
+        .map(([label, value]) => `<div><strong>${label}</strong>${value}</div>`)
+        .join('');
+      componentInfoPanel.classList.add('visible');
+      transformToolbar.classList.add('visible');
+    }
+
     function showARComponents() {
       arContainer.setAttribute('visible', 'true');
-      Object.values(arEls).forEach(e => e.setAttribute('visible', 'true'));
     }
     function hideARComponents() {
       arContainer.setAttribute('visible', 'false');
@@ -614,17 +777,28 @@
     }
 
     function selectARComponent(key) {
+      transformState.key = key;
+      transformState.scale = 1;
+      transformState.rotationY = 0;
+      transformState.position = { ...(defaultPositions[key] || { x: 0, y: 0, z: 0.02 }) };
+      componentMenu.classList.add('visible');
+      closeViewer();
       Object.entries(arEls).forEach(([k, el]) => {
         if (k === key) {
-          // resaltar
-          el.setAttribute('scale', '0.24 0.24 0.24');
-          el.setAttribute('animation', 'property: rotation; to: 0 10 0; dir: alternate; loop: true; dur: 1200');
+          el.setAttribute('visible', 'true');
+          el.setAttribute('scale', defaultScales[key] || '0.2 0.2 0.2');
+          el.setAttribute('rotation', '0 0 0');
+          el.setAttribute('animation', 'property: rotation; to: 0 8 0; dir: alternate; loop: true; dur: 1000');
           showFloatingLabel(k);
         } else {
           el.setAttribute('scale', '0.18 0.18 0.18');
           el.removeAttribute('animation');
+          el.setAttribute('visible', 'false');
         }
       });
+      showARComponents();
+      updateInfoPanel(key);
+      applyTransformState();
     }
 
     targetEl.addEventListener('targetFound', () => {
@@ -644,9 +818,61 @@
         el.setAttribute('class', 'hotspot clickable');
         el.addEventListener('click', () => {
           selectARComponent(el.dataset.component);
-          openViewer(el.dataset.component);
         });
       });
+
+      const canvas = sceneEl.canvas;
+      if (!canvas) return;
+
+      canvas.style.touchAction = 'none';
+
+      const getPointerPoint = event => {
+        const point = event.touches && event.touches[0] ? event.touches[0] : event;
+        return { x: point.clientX, y: point.clientY };
+      };
+
+      const isInteractiveUI = eventTarget => {
+        return !!eventTarget.closest('#component-menu, #viewer-modal, button');
+      };
+
+      const startDrag = event => {
+        if (!transformState.key || isInteractiveUI(event.target)) return;
+        const pointer = getPointerPoint(event);
+        dragState.active = true;
+        dragState.pointerId = event.pointerId ?? 'touch';
+        dragState.startX = pointer.x;
+        dragState.startY = pointer.y;
+        dragState.startPosition = { ...transformState.position };
+        event.preventDefault();
+      };
+
+      const moveDrag = event => {
+        if (!dragState.active) return;
+        if (event.pointerId !== undefined && dragState.pointerId !== event.pointerId) return;
+        const pointer = getPointerPoint(event);
+        const dx = pointer.x - dragState.startX;
+        const dy = pointer.y - dragState.startY;
+        transformState.position.x = dragState.startPosition.x + (dx / canvas.clientWidth) * 1.1;
+        transformState.position.y = dragState.startPosition.y - (dy / canvas.clientHeight) * 0.85;
+        applyTransformState();
+      };
+
+      const endDrag = event => {
+        if (event.pointerId !== undefined && dragState.pointerId !== event.pointerId) return;
+        dragState.active = false;
+        dragState.pointerId = null;
+      };
+
+      canvas.addEventListener('pointerdown', startDrag);
+      canvas.addEventListener('pointermove', moveDrag);
+      canvas.addEventListener('pointerup', endDrag);
+      canvas.addEventListener('pointercancel', endDrag);
+      canvas.addEventListener('mousedown', startDrag);
+      canvas.addEventListener('mousemove', moveDrag);
+      canvas.addEventListener('mouseup', endDrag);
+      canvas.addEventListener('touchstart', startDrag, { passive: false });
+      canvas.addEventListener('touchmove', moveDrag, { passive: false });
+      canvas.addEventListener('touchend', endDrag);
     });
 
     // ============================================
