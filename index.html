@@ -742,7 +742,9 @@
     const transformState = {
       key: null,
       scale: 1,
+      rotationX: 0,
       rotationY: 0,
+      rotationZ: 0,
       boardScale: 1.0,
       boardPosition: { x: 0, y: 0, z: 0 },
       position: { x: 0, y: 0, z: 0.02 }
@@ -760,8 +762,11 @@
       active: false,
       startDistance: 0,
       startAngle: 0,
+      startCenter: { x: 0, y: 0 },
       startScale: 1,
+      startRotationX: 0,
       startRotationY: 0,
+      startRotationZ: 0,
       key: null
     };
 
@@ -812,6 +817,8 @@
             transformState.position = { ...(defaultPositions[transformState.key] || { x: 0, y: 0, z: 0.02 }) };
           }
           transformState.rotationY = 0;
+          transformState.rotationX = 0;
+          transformState.rotationZ = 0;
         }
         applyTransformState();
       });
@@ -870,11 +877,16 @@
         const x = transformState.boardPosition.x + (basePos.x * transformState.boardScale) + (isSelectedComponent ? transformState.position.x : 0);
         const y = transformState.boardPosition.y + (basePos.y * transformState.boardScale) + (isSelectedComponent ? transformState.position.y : 0);
         const z = isSelectedComponent ? (basePos.z + (transformState.position.z || 0)) : basePos.z;
+        const rx = isSelectedComponent ? transformState.rotationX : 0;
+        const ry = transformState.rotationY;
+        const rz = isSelectedComponent ? transformState.rotationZ : 0;
 
         target.setAttribute('scale', `${finalScale} ${finalScale} ${finalScale}`);
-        target.setAttribute('rotation', `0 ${transformState.rotationY} 0`);
+        target.setAttribute('rotation', `${rx} ${ry} ${rz}`);
         target.setAttribute('position', `${x.toFixed(3)} ${y.toFixed(3)} ${z.toFixed(3)}`);
+        target.dataset.rotationX = rx.toFixed(3);
         target.dataset.rotationY = transformState.rotationY.toFixed(3);
+        target.dataset.rotationZ = rz.toFixed(3);
       });
     }
 
@@ -901,7 +913,9 @@
     function showBoardOnly() {
       transformState.key = null;
       transformState.scale = 1;
+      transformState.rotationX = 0;
       transformState.rotationY = 0;
+      transformState.rotationZ = 0;
       transformState.position = { x: 0, y: 0, z: 0.02 };
       arContainer.setAttribute('visible', 'true');
       if (boardEl) {
@@ -938,6 +952,9 @@
       });
       // por defecto, 'sacar' el componente un poco para verlo en detalle
       transformState.position.z = 0.25;
+      transformState.rotationX = 0;
+      transformState.rotationY = 0;
+      transformState.rotationZ = 0;
       applyTransformState();
     }
     function hideARComponents() {
@@ -969,7 +986,9 @@
     function selectARComponent(key) {
       transformState.key = key;
       transformState.scale = key === 'motherboard' ? transformState.boardScale : 1;
+      transformState.rotationX = 0;
       transformState.rotationY = 0;
+      transformState.rotationZ = 0;
       transformState.position = { x: 0, y: 0, z: 0.25 };
       componentMenu.classList.add('visible');
       closeViewer();
@@ -1046,14 +1065,27 @@
           return Math.atan2(second.clientY - first.clientY, second.clientX - first.clientX);
         };
 
+        const getTouchCenter = touches => {
+          if (!touches || touches.length < 2) return { x: 0, y: 0 };
+          const first = touches[0];
+          const second = touches[1];
+          return {
+            x: (first.clientX + second.clientX) / 2,
+            y: (first.clientY + second.clientY) / 2
+          };
+        };
+
         const startPinch = event => {
           if (!transformState.key || isInteractiveUI(event.target) || !event.touches || event.touches.length < 2) return;
           pinchState.active = true;
           pinchState.key = transformState.key;
           pinchState.startDistance = getTouchDistance(event.touches);
           pinchState.startAngle = getTouchAngle(event.touches);
+          pinchState.startCenter = getTouchCenter(event.touches);
           pinchState.startScale = transformState.key === 'motherboard' ? transformState.boardScale : transformState.scale;
+          pinchState.startRotationX = transformState.rotationX;
           pinchState.startRotationY = transformState.rotationY;
+          pinchState.startRotationZ = transformState.rotationZ;
           dragState.active = false;
           dragState.pointerId = null;
         };
@@ -1062,18 +1094,25 @@
           if (!pinchState.active || !event.touches || event.touches.length < 2) return;
           const distance = getTouchDistance(event.touches);
           const angle = getTouchAngle(event.touches);
+          const center = getTouchCenter(event.touches);
           if (!distance || !pinchState.startDistance) return;
           const nextMax = pinchState.key === 'motherboard' ? MAX_BOARD_SCALE : MAX_COMPONENT_SCALE;
           const nextScale = Math.max(MIN_COMPONENT_SCALE, Math.min(pinchState.startScale * (distance / pinchState.startDistance), nextMax));
           const deltaAngle = ((angle - pinchState.startAngle) * 180 / Math.PI);
-          const nextRotation = pinchState.startRotationY + deltaAngle;
+          const deltaCenterX = center.x - pinchState.startCenter.x;
+          const deltaCenterY = center.y - pinchState.startCenter.y;
+          const nextRotationX = pinchState.startRotationX - (deltaCenterY * 0.35);
+          const nextRotationY = pinchState.startRotationY + deltaAngle;
+          const nextRotationZ = pinchState.startRotationZ + (deltaCenterX * 0.12);
           if (pinchState.key === 'motherboard') {
             transformState.boardScale = nextScale;
             transformState.scale = nextScale;
           } else {
             transformState.scale = nextScale;
           }
-          transformState.rotationY = nextRotation;
+          transformState.rotationX = nextRotationX;
+          transformState.rotationY = nextRotationY;
+          transformState.rotationZ = nextRotationZ;
           applyTransformState();
         };
 
@@ -1082,7 +1121,10 @@
           pinchState.key = null;
           pinchState.startDistance = 0;
           pinchState.startAngle = 0;
+          pinchState.startCenter = { x: 0, y: 0 };
+          pinchState.startRotationX = 0;
           pinchState.startRotationY = 0;
+          pinchState.startRotationZ = 0;
         };
 
         const startDrag = event => {
