@@ -759,7 +759,9 @@
     const pinchState = {
       active: false,
       startDistance: 0,
+      startAngle: 0,
       startScale: 1,
+      startRotationY: 0,
       key: null
     };
 
@@ -872,6 +874,7 @@
         target.setAttribute('scale', `${finalScale} ${finalScale} ${finalScale}`);
         target.setAttribute('rotation', `0 ${transformState.rotationY} 0`);
         target.setAttribute('position', `${x.toFixed(3)} ${y.toFixed(3)} ${z.toFixed(3)}`);
+        target.dataset.rotationY = transformState.rotationY.toFixed(3);
       });
     }
 
@@ -927,8 +930,6 @@
           el.setAttribute('scale', defaultScales[k] || '0.2 0.2 0.2');
           el.setAttribute('rotation', '0 0 0');
           el.removeAttribute('animation');
-          // destacar componente seleccionado
-          el.setAttribute('animation', 'property: rotation; to: 0 8 0; dir: alternate; loop: true; dur: 1000');
           showFloatingLabel(k);
         } else {
           el.setAttribute('visible', 'false');
@@ -1038,12 +1039,21 @@
           return Math.hypot(dx, dy);
         };
 
+        const getTouchAngle = touches => {
+          if (!touches || touches.length < 2) return 0;
+          const first = touches[0];
+          const second = touches[1];
+          return Math.atan2(second.clientY - first.clientY, second.clientX - first.clientX);
+        };
+
         const startPinch = event => {
           if (!transformState.key || isInteractiveUI(event.target) || !event.touches || event.touches.length < 2) return;
           pinchState.active = true;
           pinchState.key = transformState.key;
           pinchState.startDistance = getTouchDistance(event.touches);
+          pinchState.startAngle = getTouchAngle(event.touches);
           pinchState.startScale = transformState.key === 'motherboard' ? transformState.boardScale : transformState.scale;
+          pinchState.startRotationY = transformState.rotationY;
           dragState.active = false;
           dragState.pointerId = null;
         };
@@ -1051,15 +1061,19 @@
         const updatePinch = event => {
           if (!pinchState.active || !event.touches || event.touches.length < 2) return;
           const distance = getTouchDistance(event.touches);
+          const angle = getTouchAngle(event.touches);
           if (!distance || !pinchState.startDistance) return;
           const nextMax = pinchState.key === 'motherboard' ? MAX_BOARD_SCALE : MAX_COMPONENT_SCALE;
           const nextScale = Math.max(MIN_COMPONENT_SCALE, Math.min(pinchState.startScale * (distance / pinchState.startDistance), nextMax));
+          const deltaAngle = ((angle - pinchState.startAngle) * 180 / Math.PI);
+          const nextRotation = pinchState.startRotationY + deltaAngle;
           if (pinchState.key === 'motherboard') {
             transformState.boardScale = nextScale;
             transformState.scale = nextScale;
           } else {
             transformState.scale = nextScale;
           }
+          transformState.rotationY = nextRotation;
           applyTransformState();
         };
 
@@ -1067,6 +1081,8 @@
           pinchState.active = false;
           pinchState.key = null;
           pinchState.startDistance = 0;
+          pinchState.startAngle = 0;
+          pinchState.startRotationY = 0;
         };
 
         const startDrag = event => {
