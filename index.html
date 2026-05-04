@@ -340,8 +340,8 @@
         id="ar-board"
         src="#hardwareImg"
         position="0 0 0"
-        height="1.152"
-        width="1.6"
+        height="2.16"
+        width="3.0"
         opacity="0.95"
         material="transparent: true">
       </a-plane>
@@ -852,12 +852,12 @@
     });
 
     const defaultScales = {
-      motherboard: '0.32 0.32 0.32',
-      cpu: '0.224 0.224 0.224',
-      heatsink: '0.29 0.29 0.29',
-      fan: '0.32 0.32 0.32',
-      ssd: '0.29 0.29 0.29',
-      battery: '0.32 0.32 0.32'
+      motherboard: '0.22 0.22 0.22',
+      cpu: '0.12 0.12 0.12',
+      heatsink: '0.14 0.14 0.14',
+      fan: '0.16 0.16 0.16',
+      ssd: '0.14 0.14 0.14',
+      battery: '0.16 0.16 0.16'
     };
 
     const defaultPositions = {
@@ -889,7 +889,11 @@
         target.setAttribute('scale', `${finalScale} ${finalScale} ${finalScale}`);
         target.setAttribute('rotation', `0 ${transformState.rotationY} 0`);
         target.setAttribute('position', `${x.toFixed(3)} ${y.toFixed(3)} ${z.toFixed(3)}`);
-        target.setAttribute('visible', 'true');
+        // Respetar visibilidad establecida por showBoardOnly/showOnlyComponent
+        const currentVis = target.getAttribute('visible');
+        const wasVisible = (currentVis === true) || (currentVis === 'true');
+        const intendedVisible = isSelectedComponent ? true : wasVisible;
+        target.setAttribute('visible', intendedVisible);
       });
     }
 
