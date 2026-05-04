@@ -468,10 +468,6 @@
       </div>
     </div>
     <div id="transform-toolbar">
-      <button class="tool-btn" data-action="move-left">← Mover</button>
-      <button class="tool-btn" data-action="move-right">Mover →</button>
-      <button class="tool-btn" data-action="move-up">↑ Subir</button>
-      <button class="tool-btn" data-action="move-down">Bajar ↓</button>
       <button class="tool-btn" data-action="scale-down">- Tamaño</button>
       <button class="tool-btn" data-action="scale-up">+ Tamaño</button>
       <button class="tool-btn" data-action="rotate-left">Girar izq</button>
@@ -479,7 +475,7 @@
       <button class="tool-btn" data-action="pull-out">Sacar</button>
       <button class="tool-btn" data-action="push-in">Volver</button>
       <button class="tool-btn" data-action="reset-transform">Reiniciar</button>
-      <span id="drag-hint">Pellizca con dos dedos para agrandar o achicar el componente o la placa.</span>
+      <span id="drag-hint">Arrastra con 1 dedo para mover y pellizca con 2 dedos para escalar.</span>
     </div>
   </div>
 
@@ -786,22 +782,6 @@
           if (transformState.key === 'motherboard') transformState.boardScale = Math.max(transformState.boardScale - 0.1, 0.4);
           else transformState.scale = Math.max(transformState.scale - 0.1, 0.4);
         }
-        if (action === 'move-left') {
-          if (transformState.key === 'motherboard') transformState.boardPosition.x -= 0.02;
-          else transformState.position.x -= 0.02;
-        }
-        if (action === 'move-right') {
-          if (transformState.key === 'motherboard') transformState.boardPosition.x += 0.02;
-          else transformState.position.x += 0.02;
-        }
-        if (action === 'move-up') {
-          if (transformState.key === 'motherboard') transformState.boardPosition.y += 0.02;
-          else transformState.position.y += 0.02;
-        }
-        if (action === 'move-down') {
-          if (transformState.key === 'motherboard') transformState.boardPosition.y -= 0.02;
-          else transformState.position.y -= 0.02;
-        }
         if (action === 'rotate-left') transformState.rotationY -= 12;
         if (action === 'rotate-right') transformState.rotationY += 12;
         if (action === 'pull-out') {
@@ -889,11 +869,6 @@
         target.setAttribute('scale', `${finalScale} ${finalScale} ${finalScale}`);
         target.setAttribute('rotation', `0 ${transformState.rotationY} 0`);
         target.setAttribute('position', `${x.toFixed(3)} ${y.toFixed(3)} ${z.toFixed(3)}`);
-        // Respetar visibilidad establecida por showBoardOnly/showOnlyComponent
-        const currentVis = target.getAttribute('visible');
-        const wasVisible = (currentVis === true) || (currentVis === 'true');
-        const intendedVisible = isSelectedComponent ? true : wasVisible;
-        target.setAttribute('visible', intendedVisible);
       });
     }
 
@@ -918,6 +893,10 @@
 
     // Mostrar solo la placa (sin mostrar los componentes 3D)
     function showBoardOnly() {
+      transformState.key = null;
+      transformState.scale = 1;
+      transformState.rotationY = 0;
+      transformState.position = { x: 0, y: 0, z: 0.02 };
       arContainer.setAttribute('visible', 'true');
       if (boardEl) {
         boardEl.setAttribute('visible', 'true');
@@ -930,6 +909,8 @@
         el.setAttribute('position', `${defaultPositions[key].x} ${defaultPositions[key].y} ${defaultPositions[key].z}`);
         el.setAttribute('scale', defaultScales[key] || '0.2 0.2 0.2');
       });
+      removeFloatingLabel();
+      hideInfoPanel();
       applyTransformState();
     }
 
@@ -985,7 +966,7 @@
       transformState.key = key;
       transformState.scale = key === 'motherboard' ? transformState.boardScale : 1;
       transformState.rotationY = 0;
-      transformState.position = { ...(defaultPositions[key] || { x: 0, y: 0, z: 0.02 }) };
+      transformState.position = { x: 0, y: 0, z: 0.25 };
       componentMenu.classList.add('visible');
       closeViewer();
       componentInfoPanel.classList.add('visible');
@@ -1025,122 +1006,181 @@
         });
       });
 
-      const canvas = sceneEl.canvas;
-      if (!canvas) return;
-
-      canvas.style.touchAction = 'none';
-
-      const getPointerPoint = event => {
-        const point = event.touches && event.touches[0] ? event.touches[0] : event;
-        return { x: point.clientX, y: point.clientY };
-      };
-
-      const isInteractiveUI = eventTarget => {
-        return !!eventTarget.closest('#component-menu, #viewer-modal, button');
-      };
-
-      const getTouchDistance = touches => {
-        if (!touches || touches.length < 2) return 0;
-        const first = touches[0];
-        const second = touches[1];
-        const dx = first.clientX - second.clientX;
-        const dy = first.clientY - second.clientY;
-        return Math.hypot(dx, dy);
-      };
-
-      const startPinch = event => {
-        if (!transformState.key || isInteractiveUI(event.target) || !event.touches || event.touches.length < 2) return;
-        pinchState.active = true;
-        pinchState.key = transformState.key;
-        pinchState.startDistance = getTouchDistance(event.touches);
-        pinchState.startScale = transformState.key === 'motherboard' ? transformState.boardScale : transformState.scale;
-      };
-
-      const updatePinch = event => {
-        if (!pinchState.active || !event.touches || event.touches.length < 2) return;
-        const distance = getTouchDistance(event.touches);
-        if (!distance || !pinchState.startDistance) return;
-        const nextScale = Math.max(0.4, Math.min(pinchState.startScale * (distance / pinchState.startDistance), 2.5));
-        if (pinchState.key === 'motherboard') {
-          transformState.boardScale = nextScale;
-          transformState.scale = nextScale;
-        } else {
-          transformState.scale = nextScale;
-        }
-        applyTransformState();
-      };
-
-      const endPinch = () => {
-        pinchState.active = false;
-        pinchState.key = null;
-        pinchState.startDistance = 0;
-      };
-
-      const startDrag = event => {
-        if (event.pointerType && event.pointerType !== 'mouse') return;
-        if (!transformState.key || isInteractiveUI(event.target) || pinchState.active) return;
-        const pointer = getPointerPoint(event);
-        dragState.active = true;
-        dragState.pointerId = event.pointerId ?? 'touch';
-        dragState.startX = pointer.x;
-        dragState.startY = pointer.y;
-        dragState.startPosition = transformState.key === 'motherboard'
-          ? { ...transformState.boardPosition }
-          : { ...transformState.position };
-        event.preventDefault();
-      };
-
-      const moveDrag = event => {
-        if (event.type === 'touchmove') {
-          updatePinch(event);
+      const attachCanvasInteractions = () => {
+        const canvas = sceneEl.canvas;
+        if (!canvas) {
+          requestAnimationFrame(attachCanvasInteractions);
           return;
         }
-        if (!dragState.active) return;
-        if (event.pointerId !== undefined && dragState.pointerId !== event.pointerId) return;
-        const pointer = getPointerPoint(event);
-        const dx = pointer.x - dragState.startX;
-        const dy = pointer.y - dragState.startY;
-        const nextX = dragState.startPosition.x + (dx / canvas.clientWidth) * 1.1;
-        const nextY = dragState.startPosition.y - (dy / canvas.clientHeight) * 0.85;
-        if (transformState.key === 'motherboard') {
-          transformState.boardPosition.x = nextX;
-          transformState.boardPosition.y = nextY;
-          transformState.position.x = nextX;
-          transformState.position.y = nextY;
-        } else {
-          transformState.position.x = nextX;
-          transformState.position.y = nextY;
-        }
-        applyTransformState();
-      };
+        if (canvas.dataset.interactionsReady === 'true') return;
+        canvas.dataset.interactionsReady = 'true';
 
-      const endDrag = event => {
-        if (event.type === 'touchend' || event.type === 'touchcancel') {
-          if (!event.touches || event.touches.length < 2) endPinch();
-          if (event.touches && event.touches.length === 0) {
-            dragState.active = false;
-            dragState.pointerId = null;
+        canvas.style.touchAction = 'none';
+
+        const getPointerPoint = event => {
+          const point = event.touches && event.touches[0] ? event.touches[0] : event;
+          return { x: point.clientX, y: point.clientY };
+        };
+
+        const isInteractiveUI = eventTarget => {
+          return !!eventTarget.closest('#component-menu, #viewer-modal, button');
+        };
+
+        const getTouchDistance = touches => {
+          if (!touches || touches.length < 2) return 0;
+          const first = touches[0];
+          const second = touches[1];
+          const dx = first.clientX - second.clientX;
+          const dy = first.clientY - second.clientY;
+          return Math.hypot(dx, dy);
+        };
+
+        const startPinch = event => {
+          if (!transformState.key || isInteractiveUI(event.target) || !event.touches || event.touches.length < 2) return;
+          pinchState.active = true;
+          pinchState.key = transformState.key;
+          pinchState.startDistance = getTouchDistance(event.touches);
+          pinchState.startScale = transformState.key === 'motherboard' ? transformState.boardScale : transformState.scale;
+          dragState.active = false;
+          dragState.pointerId = null;
+        };
+
+        const updatePinch = event => {
+          if (!pinchState.active || !event.touches || event.touches.length < 2) return;
+          const distance = getTouchDistance(event.touches);
+          if (!distance || !pinchState.startDistance) return;
+          const nextScale = Math.max(0.4, Math.min(pinchState.startScale * (distance / pinchState.startDistance), 2.5));
+          if (pinchState.key === 'motherboard') {
+            transformState.boardScale = nextScale;
+            transformState.scale = nextScale;
+          } else {
+            transformState.scale = nextScale;
           }
-          return;
-        }
-        if (event.pointerId !== undefined && dragState.pointerId !== event.pointerId) return;
-        dragState.active = false;
-        dragState.pointerId = null;
+          applyTransformState();
+        };
+
+        const endPinch = () => {
+          pinchState.active = false;
+          pinchState.key = null;
+          pinchState.startDistance = 0;
+        };
+
+        const startDrag = event => {
+          if (!transformState.key || isInteractiveUI(event.target) || pinchState.active) return;
+          const pointer = getPointerPoint(event);
+          dragState.active = true;
+          dragState.pointerId = event.pointerId ?? 'touch';
+          dragState.startX = pointer.x;
+          dragState.startY = pointer.y;
+          dragState.startPosition = transformState.key === 'motherboard'
+            ? { ...transformState.boardPosition }
+            : { ...transformState.position };
+          event.preventDefault();
+        };
+
+        const moveDrag = event => {
+          if (event.type === 'touchmove') {
+            if (pinchState.active && event.touches && event.touches.length >= 2) {
+              updatePinch(event);
+              return;
+            }
+            if (!dragState.active || !event.touches || event.touches.length !== 1) return;
+            const pointer = getPointerPoint(event);
+            const dx = pointer.x - dragState.startX;
+            const dy = pointer.y - dragState.startY;
+            const nextX = dragState.startPosition.x + (dx / canvas.clientWidth) * 1.1;
+            const nextY = dragState.startPosition.y - (dy / canvas.clientHeight) * 0.85;
+            if (transformState.key === 'motherboard') {
+              transformState.boardPosition.x = nextX;
+              transformState.boardPosition.y = nextY;
+            } else {
+              transformState.position.x = nextX;
+              transformState.position.y = nextY;
+            }
+            applyTransformState();
+            event.preventDefault();
+            return;
+          }
+          if (!dragState.active) return;
+          if (event.pointerId !== undefined && dragState.pointerId !== event.pointerId) return;
+          const pointer = getPointerPoint(event);
+          const dx = pointer.x - dragState.startX;
+          const dy = pointer.y - dragState.startY;
+          const nextX = dragState.startPosition.x + (dx / canvas.clientWidth) * 1.1;
+          const nextY = dragState.startPosition.y - (dy / canvas.clientHeight) * 0.85;
+          if (transformState.key === 'motherboard') {
+            transformState.boardPosition.x = nextX;
+            transformState.boardPosition.y = nextY;
+          } else {
+            transformState.position.x = nextX;
+            transformState.position.y = nextY;
+          }
+          applyTransformState();
+        };
+
+        const endDrag = event => {
+          if (event.type === 'touchend' || event.type === 'touchcancel') {
+            if (!event.touches || event.touches.length < 2) endPinch();
+            if (event.touches && event.touches.length === 0) {
+              dragState.active = false;
+              dragState.pointerId = null;
+            } else if (event.touches && event.touches.length === 1 && transformState.key) {
+              const pointer = event.touches[0];
+              dragState.active = true;
+              dragState.pointerId = 'touch';
+              dragState.startX = pointer.clientX;
+              dragState.startY = pointer.clientY;
+              dragState.startPosition = transformState.key === 'motherboard'
+                ? { ...transformState.boardPosition }
+                : { ...transformState.position };
+            }
+            return;
+          }
+          if (event.pointerId !== undefined && dragState.pointerId !== event.pointerId) return;
+          dragState.active = false;
+          dragState.pointerId = null;
+        };
+
+        canvas.addEventListener('pointerdown', startDrag);
+        canvas.addEventListener('pointermove', moveDrag);
+        canvas.addEventListener('pointerup', endDrag);
+        canvas.addEventListener('pointercancel', endDrag);
+        canvas.addEventListener('mousedown', startDrag);
+        canvas.addEventListener('mousemove', moveDrag);
+        canvas.addEventListener('mouseup', endDrag);
+        canvas.addEventListener('touchstart', event => {
+          if (!transformState.key || isInteractiveUI(event.target) || !event.touches || event.touches.length === 0) return;
+          if (event.touches.length >= 2) {
+            startPinch(event);
+            return;
+          }
+          startDrag(event);
+        }, { passive: false });
+        canvas.addEventListener('touchmove', moveDrag, { passive: false });
+        canvas.addEventListener('touchend', endDrag);
+        canvas.addEventListener('touchcancel', endDrag);
+
+        // Respaldo global: algunos móviles no envían siempre los eventos al canvas AR.
+        window.addEventListener('pointerdown', startDrag);
+        window.addEventListener('pointermove', moveDrag);
+        window.addEventListener('pointerup', endDrag);
+        window.addEventListener('pointercancel', endDrag);
+        window.addEventListener('touchstart', event => {
+          if (!transformState.key || isInteractiveUI(event.target) || !event.touches || event.touches.length === 0) return;
+          if (event.touches.length >= 2) {
+            startPinch(event);
+            return;
+          }
+          startDrag(event);
+        }, { passive: false });
+        window.addEventListener('touchmove', moveDrag, { passive: false });
+        window.addEventListener('touchend', endDrag);
+        window.addEventListener('touchcancel', endDrag);
+        // Aplicar transformaciones iniciales (escala/posiciones por defecto)
+        applyTransformState();
       };
 
-      canvas.addEventListener('pointerdown', startDrag);
-      canvas.addEventListener('pointermove', moveDrag);
-      canvas.addEventListener('pointerup', endDrag);
-      canvas.addEventListener('pointercancel', endDrag);
-      canvas.addEventListener('mousedown', startDrag);
-      canvas.addEventListener('mousemove', moveDrag);
-      canvas.addEventListener('mouseup', endDrag);
-      canvas.addEventListener('touchstart', startPinch, { passive: false });
-      canvas.addEventListener('touchmove', moveDrag, { passive: false });
-      canvas.addEventListener('touchend', endDrag);
-      canvas.addEventListener('touchcancel', endDrag);
-      // Aplicar transformaciones iniciales (escala/posiciones por defecto)
-      applyTransformState();
+      attachCanvasInteractions();
     });
 
     // ============================================
