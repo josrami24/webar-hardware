@@ -320,6 +320,7 @@
 
       <!-- Plano con la foto del interior. Ajusta width/height según las proporciones reales del QR vs. teclado -->
       <a-plane
+        id="ar-board"
         src="#hardwareImg"
         position="0 0 0"
         height="0.72"
@@ -458,7 +459,7 @@
       <button class="tool-btn" data-action="rotate-left">Girar izq</button>
       <button class="tool-btn" data-action="rotate-right">Girar der</button>
       <button class="tool-btn" data-action="reset-transform">Reiniciar</button>
-      <span id="drag-hint">Arrastra el componente sobre la escena para moverlo.</span>
+      <span id="drag-hint">Pellizca con dos dedos para agrandar o achicar el componente o la placa.</span>
     </div>
   </div>
 
@@ -722,6 +723,8 @@
       key: null,
       scale: 1,
       rotationY: 0,
+      boardScale: 1,
+      boardPosition: { x: 0, y: 0, z: 0 },
       position: { x: 0, y: 0, z: 0.02 }
     };
 
@@ -731,6 +734,13 @@
       startX: 0,
       startY: 0,
       startPosition: { x: 0, y: 0, z: 0.02 }
+    };
+
+    const pinchState = {
+      active: false,
+      startDistance: 0,
+      startScale: 1,
+      key: null
     };
 
     // Construir botones del menú
@@ -747,18 +757,41 @@
       btn.addEventListener('click', () => {
         if (!transformState.key) return;
         const action = btn.dataset.action;
-        if (action === 'scale-up') transformState.scale = Math.min(transformState.scale + 0.1, 2.5);
-        if (action === 'scale-down') transformState.scale = Math.max(transformState.scale - 0.1, 0.4);
-        if (action === 'move-left') transformState.position.x -= 0.02;
-        if (action === 'move-right') transformState.position.x += 0.02;
-        if (action === 'move-up') transformState.position.y += 0.02;
-        if (action === 'move-down') transformState.position.y -= 0.02;
+        if (action === 'scale-up') {
+          if (transformState.key === 'motherboard') transformState.boardScale = Math.min(transformState.boardScale + 0.1, 2.5);
+          else transformState.scale = Math.min(transformState.scale + 0.1, 2.5);
+        }
+        if (action === 'scale-down') {
+          if (transformState.key === 'motherboard') transformState.boardScale = Math.max(transformState.boardScale - 0.1, 0.4);
+          else transformState.scale = Math.max(transformState.scale - 0.1, 0.4);
+        }
+        if (action === 'move-left') {
+          if (transformState.key === 'motherboard') transformState.boardPosition.x -= 0.02;
+          else transformState.position.x -= 0.02;
+        }
+        if (action === 'move-right') {
+          if (transformState.key === 'motherboard') transformState.boardPosition.x += 0.02;
+          else transformState.position.x += 0.02;
+        }
+        if (action === 'move-up') {
+          if (transformState.key === 'motherboard') transformState.boardPosition.y += 0.02;
+          else transformState.position.y += 0.02;
+        }
+        if (action === 'move-down') {
+          if (transformState.key === 'motherboard') transformState.boardPosition.y -= 0.02;
+          else transformState.position.y -= 0.02;
+        }
         if (action === 'rotate-left') transformState.rotationY -= 12;
         if (action === 'rotate-right') transformState.rotationY += 12;
         if (action === 'reset-transform') {
-          transformState.scale = 1;
+          if (transformState.key === 'motherboard') {
+            transformState.boardScale = 1;
+            transformState.boardPosition = { x: 0, y: 0, z: 0 };
+          } else {
+            transformState.scale = 1;
+            transformState.position = { ...(defaultPositions[transformState.key] || { x: 0, y: 0, z: 0.02 }) };
+          }
           transformState.rotationY = 0;
-          transformState.position = { ...(defaultPositions[transformState.key] || { x: 0, y: 0, z: 0.02 }) };
         }
         applyTransformState();
       });
@@ -774,6 +807,7 @@
     // Eventos cuando se detecta / pierde el marcador
     const targetEl = document.querySelector('#target');
     const arContainer = document.getElementById('ar-components');
+    const boardEl = document.getElementById('ar-board');
     const arEls = {};
     // indexar AR elements (id -> element)
     document.querySelectorAll('.ar-comp').forEach(el => {
@@ -801,15 +835,27 @@
     };
 
     function applyTransformState() {
-      const target = arEls[transformState.key];
-      if (!target) return;
-      const base = defaultScales[transformState.key] || '0.2 0.2 0.2';
-      const baseScale = Number(base.split(' ')[0]) || 0.2;
-      const finalScale = (baseScale * transformState.scale).toFixed(3);
-      target.setAttribute('scale', `${finalScale} ${finalScale} ${finalScale}`);
-      target.setAttribute('rotation', `0 ${transformState.rotationY} 0`);
-      target.setAttribute('position', `${transformState.position.x.toFixed(3)} ${transformState.position.y.toFixed(3)} ${transformState.position.z.toFixed(3)}`);
-      target.setAttribute('visible', 'true');
+      if (boardEl) {
+        boardEl.setAttribute('scale', `${transformState.boardScale.toFixed(3)} ${transformState.boardScale.toFixed(3)} 1`);
+        boardEl.setAttribute('position', `${transformState.boardPosition.x.toFixed(3)} ${transformState.boardPosition.y.toFixed(3)} ${transformState.boardPosition.z.toFixed(3)}`);
+      }
+
+      Object.entries(arEls).forEach(([key, target]) => {
+        const base = defaultScales[key] || '0.2 0.2 0.2';
+        const baseScale = Number(base.split(' ')[0]) || 0.2;
+        const selectionScale = key === transformState.key && key !== 'motherboard' ? transformState.scale : 1;
+        const finalScale = (baseScale * transformState.boardScale * selectionScale).toFixed(3);
+        const basePos = defaultPositions[key] || { x: 0, y: 0, z: 0.02 };
+        const isSelectedComponent = key === transformState.key && key !== 'motherboard';
+        const x = transformState.boardPosition.x + (basePos.x * transformState.boardScale) + (isSelectedComponent ? transformState.position.x : 0);
+        const y = transformState.boardPosition.y + (basePos.y * transformState.boardScale) + (isSelectedComponent ? transformState.position.y : 0);
+        const z = basePos.z;
+
+        target.setAttribute('scale', `${finalScale} ${finalScale} ${finalScale}`);
+        target.setAttribute('rotation', `0 ${transformState.rotationY} 0`);
+        target.setAttribute('position', `${x.toFixed(3)} ${y.toFixed(3)} ${z.toFixed(3)}`);
+        target.setAttribute('visible', 'true');
+      });
     }
 
     function updateInfoPanel(key) {
@@ -828,6 +874,7 @@
 
     function showARComponents() {
       arContainer.setAttribute('visible', 'true');
+      if (boardEl) boardEl.setAttribute('visible', 'true');
       Object.values(arEls).forEach((el, index) => {
         const key = el.id.replace('ar-', '');
         el.setAttribute('visible', 'true');
@@ -869,7 +916,7 @@
 
     function selectARComponent(key) {
       transformState.key = key;
-      transformState.scale = 1;
+      transformState.scale = key === 'motherboard' ? transformState.boardScale : 1;
       transformState.rotationY = 0;
       transformState.position = { ...(defaultPositions[key] || { x: 0, y: 0, z: 0.02 }) };
       componentMenu.classList.add('visible');
@@ -904,6 +951,12 @@
 
     // Hacer los hotspots tap-eables
     sceneEl.addEventListener('loaded', () => {
+      const boardPlane = document.querySelector('#ar-board');
+      if (boardPlane) {
+        boardPlane.setAttribute('class', 'clickable');
+        boardPlane.addEventListener('click', () => selectARComponent('motherboard'));
+      }
+
       document.querySelectorAll('.hotspot').forEach(el => {
         el.setAttribute('class', 'hotspot clickable');
         el.addEventListener('click', () => {
@@ -925,29 +978,90 @@
         return !!eventTarget.closest('#component-menu, #viewer-modal, button');
       };
 
+      const getTouchDistance = touches => {
+        if (!touches || touches.length < 2) return 0;
+        const first = touches[0];
+        const second = touches[1];
+        const dx = first.clientX - second.clientX;
+        const dy = first.clientY - second.clientY;
+        return Math.hypot(dx, dy);
+      };
+
+      const startPinch = event => {
+        if (!transformState.key || isInteractiveUI(event.target) || !event.touches || event.touches.length < 2) return;
+        pinchState.active = true;
+        pinchState.key = transformState.key;
+        pinchState.startDistance = getTouchDistance(event.touches);
+        pinchState.startScale = transformState.key === 'motherboard' ? transformState.boardScale : transformState.scale;
+      };
+
+      const updatePinch = event => {
+        if (!pinchState.active || !event.touches || event.touches.length < 2) return;
+        const distance = getTouchDistance(event.touches);
+        if (!distance || !pinchState.startDistance) return;
+        const nextScale = Math.max(0.4, Math.min(pinchState.startScale * (distance / pinchState.startDistance), 2.5));
+        if (pinchState.key === 'motherboard') {
+          transformState.boardScale = nextScale;
+          transformState.scale = nextScale;
+        } else {
+          transformState.scale = nextScale;
+        }
+        applyTransformState();
+      };
+
+      const endPinch = () => {
+        pinchState.active = false;
+        pinchState.key = null;
+        pinchState.startDistance = 0;
+      };
+
       const startDrag = event => {
-        if (!transformState.key || isInteractiveUI(event.target)) return;
+        if (event.pointerType && event.pointerType !== 'mouse') return;
+        if (!transformState.key || isInteractiveUI(event.target) || pinchState.active) return;
         const pointer = getPointerPoint(event);
         dragState.active = true;
         dragState.pointerId = event.pointerId ?? 'touch';
         dragState.startX = pointer.x;
         dragState.startY = pointer.y;
-        dragState.startPosition = { ...transformState.position };
+        dragState.startPosition = transformState.key === 'motherboard'
+          ? { ...transformState.boardPosition }
+          : { ...transformState.position };
         event.preventDefault();
       };
 
       const moveDrag = event => {
+        if (event.type === 'touchmove') {
+          updatePinch(event);
+          return;
+        }
         if (!dragState.active) return;
         if (event.pointerId !== undefined && dragState.pointerId !== event.pointerId) return;
         const pointer = getPointerPoint(event);
         const dx = pointer.x - dragState.startX;
         const dy = pointer.y - dragState.startY;
-        transformState.position.x = dragState.startPosition.x + (dx / canvas.clientWidth) * 1.1;
-        transformState.position.y = dragState.startPosition.y - (dy / canvas.clientHeight) * 0.85;
+        const nextX = dragState.startPosition.x + (dx / canvas.clientWidth) * 1.1;
+        const nextY = dragState.startPosition.y - (dy / canvas.clientHeight) * 0.85;
+        if (transformState.key === 'motherboard') {
+          transformState.boardPosition.x = nextX;
+          transformState.boardPosition.y = nextY;
+          transformState.position.x = nextX;
+          transformState.position.y = nextY;
+        } else {
+          transformState.position.x = nextX;
+          transformState.position.y = nextY;
+        }
         applyTransformState();
       };
 
       const endDrag = event => {
+        if (event.type === 'touchend' || event.type === 'touchcancel') {
+          if (!event.touches || event.touches.length < 2) endPinch();
+          if (event.touches && event.touches.length === 0) {
+            dragState.active = false;
+            dragState.pointerId = null;
+          }
+          return;
+        }
         if (event.pointerId !== undefined && dragState.pointerId !== event.pointerId) return;
         dragState.active = false;
         dragState.pointerId = null;
@@ -960,9 +1074,10 @@
       canvas.addEventListener('mousedown', startDrag);
       canvas.addEventListener('mousemove', moveDrag);
       canvas.addEventListener('mouseup', endDrag);
-      canvas.addEventListener('touchstart', startDrag, { passive: false });
+      canvas.addEventListener('touchstart', startPinch, { passive: false });
       canvas.addEventListener('touchmove', moveDrag, { passive: false });
       canvas.addEventListener('touchend', endDrag);
+      canvas.addEventListener('touchcancel', endDrag);
     });
 
     // ============================================
