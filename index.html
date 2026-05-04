@@ -735,6 +735,9 @@
     const componentInfoImpact = document.getElementById('component-info-impact');
     const componentInfoRecommendation = document.getElementById('component-info-recommendation');
     const transformToolbar = document.getElementById('transform-toolbar');
+    const MIN_COMPONENT_SCALE = 0.4;
+    const MAX_COMPONENT_SCALE = 8.0;
+    const MAX_BOARD_SCALE = 3.2;
 
     const transformState = {
       key: null,
@@ -775,12 +778,12 @@
         if (!transformState.key) return;
         const action = btn.dataset.action;
         if (action === 'scale-up') {
-          if (transformState.key === 'motherboard') transformState.boardScale = Math.min(transformState.boardScale + 0.1, 2.5);
-          else transformState.scale = Math.min(transformState.scale + 0.1, 2.5);
+          if (transformState.key === 'motherboard') transformState.boardScale = Math.min(transformState.boardScale + 0.1, MAX_BOARD_SCALE);
+          else transformState.scale = Math.min(transformState.scale + 0.1, MAX_COMPONENT_SCALE);
         }
         if (action === 'scale-down') {
-          if (transformState.key === 'motherboard') transformState.boardScale = Math.max(transformState.boardScale - 0.1, 0.4);
-          else transformState.scale = Math.max(transformState.scale - 0.1, 0.4);
+          if (transformState.key === 'motherboard') transformState.boardScale = Math.max(transformState.boardScale - 0.1, MIN_COMPONENT_SCALE);
+          else transformState.scale = Math.max(transformState.scale - 0.1, MIN_COMPONENT_SCALE);
         }
         if (action === 'rotate-left') transformState.rotationY -= 12;
         if (action === 'rotate-right') transformState.rotationY += 12;
@@ -841,12 +844,12 @@
     };
 
     const defaultPositions = {
-      motherboard: { x: -0.32, y: 0.22, z: 0.02 },
-      cpu: { x: -0.05, y: 0.28, z: 0.02 },
-      heatsink: { x: 0.05, y: 0.22, z: 0.02 },
-      fan: { x: 0.32, y: 0.18, z: 0.02 },
-      ssd: { x: 0.05, y: 0.36, z: 0.02 },
-      battery: { x: 0, y: 0.02, z: 0.02 }
+      motherboard: { x: -0.32, y: 0.22, z: 0.14 },
+      cpu: { x: -0.05, y: 0.28, z: 0.14 },
+      heatsink: { x: 0.05, y: 0.22, z: 0.14 },
+      fan: { x: 0.32, y: 0.18, z: 0.14 },
+      ssd: { x: 0.05, y: 0.36, z: 0.14 },
+      battery: { x: 0, y: 0.02, z: 0.14 }
     };
 
     function applyTransformState() {
@@ -1049,7 +1052,8 @@
           if (!pinchState.active || !event.touches || event.touches.length < 2) return;
           const distance = getTouchDistance(event.touches);
           if (!distance || !pinchState.startDistance) return;
-          const nextScale = Math.max(0.4, Math.min(pinchState.startScale * (distance / pinchState.startDistance), 2.5));
+          const nextMax = pinchState.key === 'motherboard' ? MAX_BOARD_SCALE : MAX_COMPONENT_SCALE;
+          const nextScale = Math.max(MIN_COMPONENT_SCALE, Math.min(pinchState.startScale * (distance / pinchState.startDistance), nextMax));
           if (pinchState.key === 'motherboard') {
             transformState.boardScale = nextScale;
             transformState.scale = nextScale;
