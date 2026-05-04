@@ -130,12 +130,29 @@
 
     #component-info-panel {
       display: none;
+      position: relative;
       padding: 10px 12px 0;
       color: var(--text);
       overflow-y: auto;
       max-height: calc(100vh - 260px);
     }
     #component-info-panel.visible { display: block; }
+    #component-info-close {
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font: inherit;
+      font-size: 1rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+    #component-info-close:active { background: var(--accent-soft); }
     #component-info-panel .info-eyebrow {
       font-size: 0.68rem;
       text-transform: uppercase;
@@ -436,6 +453,7 @@
     <span class="label">Selecciona un componente</span>
     <div id="component-list"></div>
     <div id="component-info-panel">
+      <button id="component-info-close" type="button" aria-label="Cerrar información">×</button>
       <div class="info-eyebrow">Resumen ejecutivo</div>
       <div id="component-info-name"></div>
       <div id="component-info-desc"></div>
@@ -712,6 +730,7 @@
     const componentMenu = document.getElementById('component-menu');
     const componentList = document.getElementById('component-list');
     const componentInfoPanel = document.getElementById('component-info-panel');
+    const componentInfoClose = document.getElementById('component-info-close');
     const componentInfoName = document.getElementById('component-info-name');
     const componentInfoDesc = document.getElementById('component-info-desc');
     const componentInfoSpecs = document.getElementById('component-info-specs');
@@ -872,6 +891,11 @@
       transformToolbar.classList.add('visible');
     }
 
+    function hideInfoPanel() {
+      componentInfoPanel.classList.remove('visible');
+      transformToolbar.classList.remove('visible');
+    }
+
     function showARComponents() {
       arContainer.setAttribute('visible', 'true');
       if (boardEl) boardEl.setAttribute('visible', 'true');
@@ -921,6 +945,8 @@
       transformState.position = { ...(defaultPositions[key] || { x: 0, y: 0, z: 0.02 }) };
       componentMenu.classList.add('visible');
       closeViewer();
+      componentInfoPanel.classList.add('visible');
+      transformToolbar.classList.add('visible');
       showARComponents();
       Object.entries(arEls).forEach(([k, el]) => {
         if (k === key) {
@@ -937,6 +963,8 @@
       updateInfoPanel(key);
       applyTransformState();
     }
+
+    componentInfoClose.addEventListener('click', hideInfoPanel);
 
     targetEl.addEventListener('targetFound', () => {
       scanningHint.classList.remove('visible');
