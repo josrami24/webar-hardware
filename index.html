@@ -91,15 +91,23 @@
 
     /* Menú flotante de componentes */
     #component-menu {
-      position: fixed; bottom: 0; left: 0; right: 0;
-      background: var(--panel); backdrop-filter: blur(10px);
-      border-top: 1px solid var(--border);
-      padding: 12px 8px 16px;
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      width: min(360px, calc(100vw - 24px));
+      max-height: calc(100vh - 24px);
+      overflow: hidden;
+      background: rgba(10, 14, 26, 0.92);
+      backdrop-filter: blur(14px);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 14px 12px 12px;
       z-index: 100;
-      transform: translateY(100%);
-      transition: transform 0.3s ease;
+      transform: translateX(110%);
+      transition: transform 0.35s ease;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
     }
-    #component-menu.visible { transform: translateY(0); }
+    #component-menu.visible { transform: translateX(0); }
     #component-menu .label {
       font-size: 0.7rem; color: var(--text-dim);
       text-transform: uppercase; letter-spacing: 2px;
@@ -124,8 +132,17 @@
       display: none;
       padding: 10px 12px 0;
       color: var(--text);
+      overflow-y: auto;
+      max-height: calc(100vh - 260px);
     }
     #component-info-panel.visible { display: block; }
+    #component-info-panel .info-eyebrow {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
     #component-info-name {
       color: var(--accent);
       text-transform: uppercase;
@@ -158,6 +175,26 @@
       margin-bottom: 2px;
     }
 
+    .info-card {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(0, 229, 255, 0.12);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .info-card h4 {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 1.8px;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+    .info-card p {
+      font-size: 0.84rem;
+      line-height: 1.45;
+      color: var(--text);
+    }
+
     #transform-toolbar {
       display: none;
       padding: 10px 12px 0;
@@ -182,6 +219,23 @@
       margin-top: 8px;
       font-size: 0.72rem;
       color: var(--text-dim);
+    }
+
+    @media (max-width: 720px) {
+      #component-menu {
+        top: auto;
+        right: 0;
+        left: 0;
+        bottom: 0;
+        width: auto;
+        max-height: 48vh;
+        border-radius: 18px 18px 0 0;
+        transform: translateY(105%);
+      }
+      #component-menu.visible { transform: translateY(0); }
+      #component-info-panel {
+        max-height: 22vh;
+      }
     }
 
     /* Modal del visor 3D */
@@ -381,9 +435,18 @@
     <span class="label">Selecciona un componente</span>
     <div id="component-list"></div>
     <div id="component-info-panel">
+      <div class="info-eyebrow">Resumen ejecutivo</div>
       <div id="component-info-name"></div>
       <div id="component-info-desc"></div>
       <div id="component-info-specs"></div>
+      <div class="info-card">
+        <h4>Qué aporta</h4>
+        <p id="component-info-impact"></p>
+      </div>
+      <div class="info-card">
+        <h4>Recomendación</h4>
+        <p id="component-info-recommendation"></p>
+      </div>
     </div>
     <div id="transform-toolbar">
       <button class="tool-btn" data-action="move-left">← Mover</button>
@@ -430,36 +493,48 @@
         name: "Placa madre",
         desc: "La placa madre es el circuito principal que conecta todos los componentes del portátil. Aloja el chipset, distribuye la energía, gestiona la comunicación entre el procesador, la memoria, el almacenamiento y los periféricos.",
         specs: { "Tipo": "PCB multicapa", "Función": "Interconexión central", "Alimenta": "Todos los módulos" },
+        impact: "Define la estabilidad general del equipo porque coordina energía y comunicación entre el resto de piezas.",
+        recommendation: "Mantenerla libre de polvo, sin humedad y con ventilación adecuada evita fallos eléctricos y sobrecalentamiento.",
         build: () => buildMotherboard()
       },
       cpu: {
         name: "Procesador (CPU)",
         desc: "El cerebro del portátil. Ejecuta instrucciones de los programas y realiza los cálculos. Está soldado a la placa y trabaja a temperaturas elevadas, por eso necesita el disipador y el ventilador.",
         specs: { "Función": "Procesamiento", "Cores": "Múltiples núcleos", "Refrigeración": "Heatsink + fan" },
+        impact: "Es el componente que más influye en la velocidad de respuesta del sistema y en la ejecución de tareas pesadas.",
+        recommendation: "Verifica que la refrigeración esté en buen estado; si se usa sin disipación suficiente, baja el rendimiento por temperatura.",
         build: () => buildCPU()
       },
       heatsink: {
         name: "Disipador térmico",
         desc: "Estructura de cobre o aluminio con tubos de calor (heatpipes) que conduce el calor desde el CPU/GPU hacia las aletas, donde el ventilador lo expulsa. Sin él, el procesador se sobrecalentaría en segundos.",
         specs: { "Material": "Cobre + aluminio", "Tecnología": "Heatpipes", "Función": "Refrigeración pasiva" },
+        impact: "Permite que el procesador mantenga su rendimiento porque evacúa el calor generado por el trabajo interno.",
+        recommendation: "Si el equipo calienta demasiado, el disipador puede requerir limpieza o cambio de pasta térmica.",
         build: () => buildHeatsink()
       },
       fan: {
         name: "Ventilador",
         desc: "Empuja el aire a través del disipador para expulsar el calor fuera del chasis. Su velocidad varía según la temperatura del CPU, controlada por el firmware del sistema.",
         specs: { "Tipo": "Radial blower", "RPM": "Variable", "Control": "PWM por BIOS" },
+        impact: "Es el encargado de sostener el flujo de aire que evita que el sistema entre en protección térmica.",
+        recommendation: "Revisar ruidos, vibraciones o acumulación de polvo ayuda a prevenir fallos y pérdida de refrigeración.",
         build: () => buildFan()
       },
       ssd: {
         name: "SSD M.2 NVMe",
         desc: "Unidad de almacenamiento de estado sólido con interfaz M.2. Mucho más rápida que un disco mecánico, almacena el sistema operativo, programas y archivos del usuario.",
         specs: { "Formato": "M.2 2280", "Interfaz": "PCIe NVMe", "Ventaja": "Alta velocidad" },
+        impact: "Mejora los tiempos de arranque, la apertura de programas y la respuesta general del portátil.",
+        recommendation: "Si vas a ampliar capacidad, elige un SSD compatible con la ranura y con buena velocidad sostenida.",
         build: () => buildSSD()
       },
       battery: {
         name: "Batería de Ion-Litio",
         desc: "Suministra energía al portátil cuando no está conectado a la corriente. Esta batería es de polímero de litio (Li-Po) de 75 Wh, recargable y con celdas múltiples integradas.",
         specs: { "Tecnología": "Li-Polymer", "Capacidad": "75 Wh", "Voltaje": "15.56 V" },
+        impact: "Define la autonomía real del equipo y sostiene el uso móvil fuera de la toma eléctrica.",
+        recommendation: "Evita calor excesivo y descargas completas frecuentes para alargar su vida útil.",
         build: () => buildBattery()
       }
     };
@@ -639,6 +714,8 @@
     const componentInfoName = document.getElementById('component-info-name');
     const componentInfoDesc = document.getElementById('component-info-desc');
     const componentInfoSpecs = document.getElementById('component-info-specs');
+    const componentInfoImpact = document.getElementById('component-info-impact');
+    const componentInfoRecommendation = document.getElementById('component-info-recommendation');
     const transformToolbar = document.getElementById('transform-toolbar');
 
     const transformState = {
@@ -743,12 +820,26 @@
       componentInfoSpecs.innerHTML = Object.entries(comp.specs)
         .map(([label, value]) => `<div><strong>${label}</strong>${value}</div>`)
         .join('');
+      componentInfoImpact.textContent = comp.impact || '';
+      componentInfoRecommendation.textContent = comp.recommendation || '';
       componentInfoPanel.classList.add('visible');
       transformToolbar.classList.add('visible');
     }
 
     function showARComponents() {
       arContainer.setAttribute('visible', 'true');
+      Object.values(arEls).forEach((el, index) => {
+        const key = el.id.replace('ar-', '');
+        el.setAttribute('visible', 'true');
+        el.setAttribute('position', `${defaultPositions[key].x} ${defaultPositions[key].y} ${defaultPositions[key].z}`);
+        el.setAttribute('scale', defaultScales[key] || '0.2 0.2 0.2');
+        el.setAttribute('rotation', '0 0 0');
+        el.removeAttribute('animation');
+        if (index > 0) {
+          const floatOffset = (index % 2 === 0 ? 1 : -1) * 0.015;
+          el.setAttribute('position', `${(defaultPositions[key].x + floatOffset).toFixed(3)} ${defaultPositions[key].y.toFixed(3)} ${defaultPositions[key].z.toFixed(3)}`);
+        }
+      });
     }
     function hideARComponents() {
       arContainer.setAttribute('visible', 'false');
@@ -783,6 +874,7 @@
       transformState.position = { ...(defaultPositions[key] || { x: 0, y: 0, z: 0.02 }) };
       componentMenu.classList.add('visible');
       closeViewer();
+      showARComponents();
       Object.entries(arEls).forEach(([k, el]) => {
         if (k === key) {
           el.setAttribute('visible', 'true');
@@ -791,12 +883,10 @@
           el.setAttribute('animation', 'property: rotation; to: 0 8 0; dir: alternate; loop: true; dur: 1000');
           showFloatingLabel(k);
         } else {
-          el.setAttribute('scale', '0.18 0.18 0.18');
+          el.setAttribute('visible', 'true');
           el.removeAttribute('animation');
-          el.setAttribute('visible', 'false');
         }
       });
-      showARComponents();
       updateInfoPanel(key);
       applyTransformState();
     }
