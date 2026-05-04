@@ -742,7 +742,7 @@
       key: null,
       scale: 1,
       rotationY: 0,
-      boardScale: 1,
+      boardScale: 1.6,
       boardPosition: { x: 0, y: 0, z: 0 },
       position: { x: 0, y: 0, z: 0.02 }
     };
@@ -836,12 +836,12 @@
     });
 
     const defaultScales = {
-      motherboard: '0.2 0.2 0.2',
-      cpu: '0.14 0.14 0.14',
-      heatsink: '0.18 0.18 0.18',
-      fan: '0.2 0.2 0.2',
-      ssd: '0.18 0.18 0.18',
-      battery: '0.2 0.2 0.2'
+      motherboard: '0.32 0.32 0.32',
+      cpu: '0.224 0.224 0.224',
+      heatsink: '0.29 0.29 0.29',
+      fan: '0.32 0.32 0.32',
+      ssd: '0.29 0.29 0.29',
+      battery: '0.32 0.32 0.32'
     };
 
     const defaultPositions = {
@@ -896,21 +896,42 @@
       transformToolbar.classList.remove('visible');
     }
 
-    function showARComponents() {
+    // Mostrar solo la placa (sin mostrar los componentes 3D)
+    function showBoardOnly() {
       arContainer.setAttribute('visible', 'true');
-      if (boardEl) boardEl.setAttribute('visible', 'true');
-      Object.values(arEls).forEach((el, index) => {
-        const key = el.id.replace('ar-', '');
-        el.setAttribute('visible', 'true');
+      if (boardEl) {
+        boardEl.setAttribute('visible', 'true');
+        boardEl.setAttribute('scale', `${transformState.boardScale} ${transformState.boardScale} 1`);
+      }
+      Object.entries(arEls).forEach(([key, el]) => {
+        el.setAttribute('visible', 'false');
+        el.removeAttribute('animation');
+        // asegurar posición y escala base, pero ocultos
         el.setAttribute('position', `${defaultPositions[key].x} ${defaultPositions[key].y} ${defaultPositions[key].z}`);
         el.setAttribute('scale', defaultScales[key] || '0.2 0.2 0.2');
-        el.setAttribute('rotation', '0 0 0');
-        el.removeAttribute('animation');
-        if (index > 0) {
-          const floatOffset = (index % 2 === 0 ? 1 : -1) * 0.015;
-          el.setAttribute('position', `${(defaultPositions[key].x + floatOffset).toFixed(3)} ${defaultPositions[key].y.toFixed(3)} ${defaultPositions[key].z.toFixed(3)}`);
+      });
+      applyTransformState();
+    }
+
+    // Mostrar únicamente el componente seleccionado y permitir interacción
+    function showOnlyComponent(key) {
+      arContainer.setAttribute('visible', 'true');
+      if (boardEl) boardEl.setAttribute('visible', 'true');
+      Object.entries(arEls).forEach(([k, el]) => {
+        if (k === key) {
+          el.setAttribute('visible', 'true');
+          el.setAttribute('scale', defaultScales[k] || '0.2 0.2 0.2');
+          el.setAttribute('rotation', '0 0 0');
+          el.removeAttribute('animation');
+          // destacar componente seleccionado
+          el.setAttribute('animation', 'property: rotation; to: 0 8 0; dir: alternate; loop: true; dur: 1000');
+          showFloatingLabel(k);
+        } else {
+          el.setAttribute('visible', 'false');
+          el.removeAttribute('animation');
         }
       });
+      applyTransformState();
     }
     function hideARComponents() {
       arContainer.setAttribute('visible', 'false');
@@ -947,19 +968,8 @@
       closeViewer();
       componentInfoPanel.classList.add('visible');
       transformToolbar.classList.add('visible');
-      showARComponents();
-      Object.entries(arEls).forEach(([k, el]) => {
-        if (k === key) {
-          el.setAttribute('visible', 'true');
-          el.setAttribute('scale', defaultScales[key] || '0.2 0.2 0.2');
-          el.setAttribute('rotation', '0 0 0');
-          el.setAttribute('animation', 'property: rotation; to: 0 8 0; dir: alternate; loop: true; dur: 1000');
-          showFloatingLabel(k);
-        } else {
-          el.setAttribute('visible', 'true');
-          el.removeAttribute('animation');
-        }
-      });
+      // Mostrar solo el componente seleccionado
+      showOnlyComponent(key);
       updateInfoPanel(key);
       applyTransformState();
     }
@@ -969,7 +979,8 @@
     targetEl.addEventListener('targetFound', () => {
       scanningHint.classList.remove('visible');
       componentMenu.classList.add('visible');
-      showARComponents();
+      // Mostrar solo la placa al encontrar el marcador; los componentes aparecerán al pulsar sus botones
+      showBoardOnly();
     });
     targetEl.addEventListener('targetLost', () => {
       scanningHint.classList.add('visible');
@@ -1106,6 +1117,8 @@
       canvas.addEventListener('touchmove', moveDrag, { passive: false });
       canvas.addEventListener('touchend', endDrag);
       canvas.addEventListener('touchcancel', endDrag);
+      // Aplicar transformaciones iniciales (escala/posiciones por defecto)
+      applyTransformState();
     });
 
     // ============================================
