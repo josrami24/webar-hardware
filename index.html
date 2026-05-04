@@ -340,8 +340,8 @@
         id="ar-board"
         src="#hardwareImg"
         position="0 0 0"
-        height="0.72"
-        width="1"
+        height="1.152"
+        width="1.6"
         opacity="0.95"
         material="transparent: true">
       </a-plane>
@@ -476,6 +476,8 @@
       <button class="tool-btn" data-action="scale-up">+ Tamaño</button>
       <button class="tool-btn" data-action="rotate-left">Girar izq</button>
       <button class="tool-btn" data-action="rotate-right">Girar der</button>
+      <button class="tool-btn" data-action="pull-out">Sacar</button>
+      <button class="tool-btn" data-action="push-in">Volver</button>
       <button class="tool-btn" data-action="reset-transform">Reiniciar</button>
       <span id="drag-hint">Pellizca con dos dedos para agrandar o achicar el componente o la placa.</span>
     </div>
@@ -742,7 +744,7 @@
       key: null,
       scale: 1,
       rotationY: 0,
-      boardScale: 1.6,
+      boardScale: 1.0,
       boardPosition: { x: 0, y: 0, z: 0 },
       position: { x: 0, y: 0, z: 0.02 }
     };
@@ -802,6 +804,20 @@
         }
         if (action === 'rotate-left') transformState.rotationY -= 12;
         if (action === 'rotate-right') transformState.rotationY += 12;
+        if (action === 'pull-out') {
+          if (transformState.key === 'motherboard') {
+            transformState.boardPosition.z = (transformState.boardPosition.z || 0) + 0.02;
+          } else {
+            transformState.position.z = Math.min((transformState.position.z || 0) + 0.25, 1.5);
+          }
+        }
+        if (action === 'push-in') {
+          if (transformState.key === 'motherboard') {
+            transformState.boardPosition.z = 0;
+          } else {
+            transformState.position.z = (defaultPositions[transformState.key] && defaultPositions[transformState.key].z) || 0.02;
+          }
+        }
         if (action === 'reset-transform') {
           if (transformState.key === 'motherboard') {
             transformState.boardScale = 1;
@@ -868,7 +884,7 @@
         const isSelectedComponent = key === transformState.key && key !== 'motherboard';
         const x = transformState.boardPosition.x + (basePos.x * transformState.boardScale) + (isSelectedComponent ? transformState.position.x : 0);
         const y = transformState.boardPosition.y + (basePos.y * transformState.boardScale) + (isSelectedComponent ? transformState.position.y : 0);
-        const z = basePos.z;
+        const z = isSelectedComponent ? (basePos.z + (transformState.position.z || 0)) : basePos.z;
 
         target.setAttribute('scale', `${finalScale} ${finalScale} ${finalScale}`);
         target.setAttribute('rotation', `0 ${transformState.rotationY} 0`);
@@ -931,6 +947,8 @@
           el.removeAttribute('animation');
         }
       });
+      // por defecto, 'sacar' el componente un poco para verlo en detalle
+      transformState.position.z = 0.25;
       applyTransformState();
     }
     function hideARComponents() {
