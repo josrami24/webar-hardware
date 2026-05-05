@@ -878,110 +878,126 @@
       });
     });
 
-    // Solicitar permiso de cámara explícitamente
-    async function requestCameraPermission() {
+    // Detectar dispositivo
+    const isAndroid = /android/i.test(navigator.userAgent);
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    console.log('Device:', isAndroid ? 'ANDROID' : isIOS ? 'iOS' : 'Desktop');
+
+    // Solicitar permiso de cámara y obtener stream
+    async function requestCameraStream() {
       try {
-        // Primero, verificar si ya tenemos el permiso
-        const permission = await navigator.permissions.query({ name: 'camera' });
-        console.log('Camera permission status:', permission.state);
+        console.log('Requesting camera stream...');
         
-        if (permission.state === 'granted') {
-          console.log('Camera permission already granted');
-          return true;
+        const constraints = {
+          video: {
+            facingMode: { ideal: 'environment' },
+            ...(isAndroid && { width: { ideal: 1280 }, height: { ideal: 720 } })
+          },
+          audio: false
+        };
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('✅ Camera stream obtained');
+        
+        // Obtener información del track
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          const settings = videoTrack.getSettings();
+          console.log('Video settings:', {
+            width: settings.width,
+            height: settings.height,
+            frameRate: settings.frameRate,
+            facingMode: settings.facingMode
+          });
         }
         
-        if (permission.state === 'denied') {
-          console.log('Camera permission denied by user');
-          alert('Permiso de cámara denegado. Por favor habilita los permisos de cámara en los ajustes del teléfono.');
-          return false;
-        }
-        
-        // Solicitar acceso a la cámara
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: 'environment',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          } 
-        });
-        // Detener el stream temporal
-        stream.getTracks().forEach(track => track.stop());
-        console.log('Camera permission granted');
-        return true;
+        return stream;
       } catch (error) {
-        console.error('Error requesting camera permission:', error);
-        alert('Error al acceder a la cámara: ' + error.message);
-        return false;
+        console.error('❌ Error requesting camera:', error);
+        alert('Error de cámara: ' + error.message + '\n\nAsegúrate de haber dado permisos de cámara.');
+        return null;
       }
     }
 
     async function startARCamera() {
       try {
-        console.log('Starting AR camera...');
+        console.log('Starting AR system...');
+        
+        // Obtener stream de cámara real
+        const stream = await requestCameraStream();
+        if (!stream) throw new Error('Failed to get camera stream');
+        
+        // Obtener elemento video del DOM
+        let videoEl = document.querySelector('video');
+        if (!videoEl) {
+          console.log('Creating video element...');
+          videoEl = document.createElement('video');
+          videoEl.setAttribute('playsinline', 'true');
+          videoEl.setAttribute('webkit-playsinline', 'true');
+          videoEl.setAttribute('autoplay', 'true');
+          videoEl.style.display = 'none';
+          document.body.appendChild(videoEl);
+        }
+        
+        // Asignar stream al video
+        videoEl.srcObject = stream;
+        
+        // Esperar a que esté listo
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Video element did not become ready'));
+          }, 5000);
+          
+          videoEl.onloadedmetadata = () => {
+            clearTimeout(timeout);
+            console.log('Video metadata loaded');
+            resolve();
+          };
+          
+          videoEl.onerror = (err) => {
+            clearTimeout(timeout);
+            reject(err);
+          };
+        });
+        
+        // Reproducir video
+        try {
+          await videoEl.play();
+          console.log('✅ Video playing');
+        } catch (e) {
+          console.warn('Video play() promise rejected (may be ok on some devices):', e);
+        }
+        
+        // Ahora iniciar MindAR
+        console.log('Initializing MindAR...');
         const mindarSystem = sceneEl.systems['mindar-image-system'];
         
-        // Agregar listeners de error antes de iniciar
-        sceneEl.addEventListener('error', (error) => {
-          console.error('A-Frame error:', error);
-        });
-        
-        // Escuchar evento de ready de MindAR
-        sceneEl.addEventListener('arReady', () => {
-          console.log('🎯 AR System is ready!');
-        });
-        
-        // Iniciar el sistema
-        const startResult = await mindarSystem.start();
-        console.log('MindAR started:', startResult);
-        
-        // Verificar que el video está corriendo
-        const video = document.querySelector('video');
-        if (video) {
-          console.log('Video element found, readyState:', video.readyState, 'paused:', video.paused);
-          
-          // Forzar reproducción
-          try {
-            const playPromise = video.play();
-            if (playPromise !== undefined) {
-              await playPromise;
-              console.log('✅ Video playing successfully');
-            }
-          } catch(e) {
-            console.error('Error playing video:', e);
-          }
-        } else {
-          console.warn('⚠️ Video element not found');
+        if (!mindarSystem) {
+          throw new Error('MindAR system not found');
         }
         
-        // Verificar canvas
-        if (sceneEl.canvas) {
-          console.log('Canvas ready:', sceneEl.canvas.width, 'x', sceneEl.canvas.height);
-        }
+        // Iniciar
+        await mindarSystem.start();
+        console.log('✅ MindAR started');
         
         return true;
+        
       } catch (error) {
-        console.error('Error starting MindAR:', error);
+        console.error('❌ AR startup error:', error);
         throw error;
       }
     }
+
+    // Definir targetEl aquí para usarlo en startBtn
+    const targetEl = document.querySelector('#target');
 
     startBtn.addEventListener('click', async () => {
       try {
         introScreen.style.display = 'none';
         scanningHint.classList.add('visible');
+        scanningHint.textContent = 'Iniciando cámara...';
         
-        // Solicitar permiso de cámara primero
-        console.log('Requesting camera permission...');
-        const hasPermission = await requestCameraPermission();
-        if (!hasPermission) {
-          introScreen.style.display = 'flex';
-          scanningHint.classList.remove('visible');
-          return;
-        }
-        
-        console.log('Camera permission granted, waiting before starting AR...');
-        // Esperar un poco antes de iniciar MindAR
-        await new Promise(resolve => setTimeout(resolve, 800));
+        console.log('=== START BUTTON CLICKED ===');
         
         // Intentar iniciar con reintentos
         let retries = 3;
@@ -989,49 +1005,47 @@
         
         while (retries > 0) {
           try {
+            console.log(`Attempt ${4 - retries}/3...`);
             const success = await startARCamera();
+            
             if (success) {
-              console.log('AR Camera started successfully');
+              console.log('🎯 AR Camera started successfully!');
+              scanningHint.textContent = 'Buscando marcador QR...';
               
-              // Agregar timeout de detección
+              // Timeout de detección
               const detectionTimeout = setTimeout(() => {
-                console.warn('⚠️ No marker detected after 15 seconds. Video stream may not be working.');
-                console.warn('Please ensure:');
-                console.warn('1. You have proper lighting');
-                console.warn('2. The QR code is visible to the camera');
-                console.warn('3. Camera permissions are granted');
-              }, 15000);
+                console.warn('⚠️ Marker not detected after 20 seconds');
+              }, 20000);
               
-              // Limpiar timeout cuando se detecte el marcador
-              targetEl.addEventListener('targetFound', () => clearTimeout(detectionTimeout), { once: true });
+              targetEl.addEventListener('targetFound', () => {
+                clearTimeout(detectionTimeout);
+              }, { once: true });
               
               return;
             }
           } catch (error) {
             lastError = error;
-            console.error(`Attempt failed (${4 - retries}/3):`, error);
+            console.error(`Attempt failed:`, error.message);
             retries--;
             
             if (retries > 0) {
-              console.log(`Retrying in 1 second... (${retries} attempts remaining)`);
-              await new Promise(resolve => setTimeout(resolve, 1000));
+              console.log(`Waiting 1.5 seconds before retry...`);
+              await new Promise(resolve => setTimeout(resolve, 1500));
             }
           }
         }
         
-        // Si llegamos aquí, falló
-        throw new Error(`Failed to start camera after 3 attempts: ${lastError?.message || 'Unknown error'}`);
+        throw new Error(`All attempts failed: ${lastError?.message || 'Unknown error'}`);
         
       } catch (error) {
-        console.error('Fatal error:', error);
+        console.error('❌ FATAL ERROR:', error);
         introScreen.style.display = 'flex';
         scanningHint.classList.remove('visible');
-        alert('Error al iniciar la cámara AR: ' + error.message + '. Intenta de nuevo.');
+        alert('Error al iniciar AR:\n' + error.message + '\n\nIntenta:\n1. Cerrar y abrir la app nuevamente\n2. Reiniciar el teléfono\n3. Usar otro navegador');
       }
     });
 
     // Eventos cuando se detecta / pierde el marcador
-    const targetEl = document.querySelector('#target');
     const arContainer = document.getElementById('ar-components');
     const boardEl = document.getElementById('ar-board');
     const arEls = {};
