@@ -877,11 +877,61 @@
       });
     });
 
+    // Solicitar permiso de cámara explícitamente
+    async function requestCameraPermission() {
+      try {
+        // Primero, verificar si ya tenemos el permiso
+        const permission = await navigator.permissions.query({ name: 'camera' });
+        console.log('Camera permission status:', permission.state);
+        
+        if (permission.state === 'granted') {
+          console.log('Camera permission already granted');
+          return true;
+        }
+        
+        if (permission.state === 'denied') {
+          console.log('Camera permission denied by user');
+          alert('Permiso de cámara denegado. Por favor habilita los permisos de cámara en los ajustes del teléfono.');
+          return false;
+        }
+        
+        // Solicitar acceso a la cámara
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        // Detener el stream temporal
+        stream.getTracks().forEach(track => track.stop());
+        console.log('Camera permission granted');
+        return true;
+      } catch (error) {
+        console.error('Error requesting camera permission:', error);
+        alert('Error al acceder a la cámara: ' + error.message);
+        return false;
+      }
+    }
+
     startBtn.addEventListener('click', async () => {
       introScreen.style.display = 'none';
       scanningHint.classList.add('visible');
-      const mindarSystem = sceneEl.systems['mindar-image-system'];
-      await mindarSystem.start();
+      
+      // Solicitar permiso de cámara primero en Android
+      const hasPermission = await requestCameraPermission();
+      if (!hasPermission) {
+        introScreen.style.display = 'flex';
+        scanningHint.classList.remove('visible');
+        return;
+      }
+      
+      // Esperar un poco antes de iniciar MindAR (da tiempo al sistema)
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      try {
+        const mindarSystem = sceneEl.systems['mindar-image-system'];
+        await mindarSystem.start();
+      } catch (error) {
+        console.error('Error starting MindAR:', error);
+        introScreen.style.display = 'flex';
+        scanningHint.classList.remove('visible');
+        alert('Error al iniciar la cámara AR: ' + error.message);
+      }
     });
 
     // Eventos cuando se detecta / pierde el marcador
