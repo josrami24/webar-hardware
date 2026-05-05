@@ -319,11 +319,12 @@
 
   <!-- ESCENA AR -->
   <a-scene
-    mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiScanning: no; uiLoading: no;"
+    mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiScanning: no; uiLoading: no; missingWebGLCanvasCreated: false"
     color-space="sRGB"
-    renderer="colorManagement: true, physicallyCorrectLights"
+    renderer="colorManagement: true, physicallyCorrectLights, antialias: true, precision: highp"
     vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false">
+    device-orientation-permission-ui="enabled: false"
+    embedded>
 
     <a-assets>
       <!-- Imagen del interior del portátil que se sobrepondrá al teclado -->
@@ -896,7 +897,13 @@
         }
         
         // Solicitar acceso a la cámara
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          } 
+        });
         // Detener el stream temporal
         stream.getTracks().forEach(track => track.stop());
         console.log('Camera permission granted');
@@ -908,29 +915,118 @@
       }
     }
 
-    startBtn.addEventListener('click', async () => {
-      introScreen.style.display = 'none';
-      scanningHint.classList.add('visible');
-      
-      // Solicitar permiso de cámara primero en Android
-      const hasPermission = await requestCameraPermission();
-      if (!hasPermission) {
-        introScreen.style.display = 'flex';
-        scanningHint.classList.remove('visible');
-        return;
-      }
-      
-      // Esperar un poco antes de iniciar MindAR (da tiempo al sistema)
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+    async function startARCamera() {
       try {
+        console.log('Starting AR camera...');
         const mindarSystem = sceneEl.systems['mindar-image-system'];
-        await mindarSystem.start();
+        
+        // Agregar listeners de error antes de iniciar
+        sceneEl.addEventListener('error', (error) => {
+          console.error('A-Frame error:', error);
+        });
+        
+        // Escuchar evento de ready de MindAR
+        sceneEl.addEventListener('arReady', () => {
+          console.log('🎯 AR System is ready!');
+        });
+        
+        // Iniciar el sistema
+        const startResult = await mindarSystem.start();
+        console.log('MindAR started:', startResult);
+        
+        // Verificar que el video está corriendo
+        const video = document.querySelector('video');
+        if (video) {
+          console.log('Video element found, readyState:', video.readyState, 'paused:', video.paused);
+          
+          // Forzar reproducción
+          try {
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+              await playPromise;
+              console.log('✅ Video playing successfully');
+            }
+          } catch(e) {
+            console.error('Error playing video:', e);
+          }
+        } else {
+          console.warn('⚠️ Video element not found');
+        }
+        
+        // Verificar canvas
+        if (sceneEl.canvas) {
+          console.log('Canvas ready:', sceneEl.canvas.width, 'x', sceneEl.canvas.height);
+        }
+        
+        return true;
       } catch (error) {
         console.error('Error starting MindAR:', error);
+        throw error;
+      }
+    }
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        introScreen.style.display = 'none';
+        scanningHint.classList.add('visible');
+        
+        // Solicitar permiso de cámara primero
+        console.log('Requesting camera permission...');
+        const hasPermission = await requestCameraPermission();
+        if (!hasPermission) {
+          introScreen.style.display = 'flex';
+          scanningHint.classList.remove('visible');
+          return;
+        }
+        
+        console.log('Camera permission granted, waiting before starting AR...');
+        // Esperar un poco antes de iniciar MindAR
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        // Intentar iniciar con reintentos
+        let retries = 3;
+        let lastError = null;
+        
+        while (retries > 0) {
+          try {
+            const success = await startARCamera();
+            if (success) {
+              console.log('AR Camera started successfully');
+              
+              // Agregar timeout de detección
+              const detectionTimeout = setTimeout(() => {
+                console.warn('⚠️ No marker detected after 15 seconds. Video stream may not be working.');
+                console.warn('Please ensure:');
+                console.warn('1. You have proper lighting');
+                console.warn('2. The QR code is visible to the camera');
+                console.warn('3. Camera permissions are granted');
+              }, 15000);
+              
+              // Limpiar timeout cuando se detecte el marcador
+              targetEl.addEventListener('targetFound', () => clearTimeout(detectionTimeout), { once: true });
+              
+              return;
+            }
+          } catch (error) {
+            lastError = error;
+            console.error(`Attempt failed (${4 - retries}/3):`, error);
+            retries--;
+            
+            if (retries > 0) {
+              console.log(`Retrying in 1 second... (${retries} attempts remaining)`);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+        }
+        
+        // Si llegamos aquí, falló
+        throw new Error(`Failed to start camera after 3 attempts: ${lastError?.message || 'Unknown error'}`);
+        
+      } catch (error) {
+        console.error('Fatal error:', error);
         introScreen.style.display = 'flex';
         scanningHint.classList.remove('visible');
-        alert('Error al iniciar la cámara AR: ' + error.message);
+        alert('Error al iniciar la cámara AR: ' + error.message + '. Intenta de nuevo.');
       }
     });
 
@@ -1108,12 +1204,14 @@
     componentInfoClose.addEventListener('click', hideInfoPanel);
 
     targetEl.addEventListener('targetFound', () => {
+      console.log('✅ TARGET FOUND! AR is working!');
       scanningHint.classList.remove('visible');
       componentMenu.classList.add('visible');
       // Mostrar solo la placa al encontrar el marcador; los componentes aparecerán al pulsar sus botones
       showBoardOnly();
     });
     targetEl.addEventListener('targetLost', () => {
+      console.log('❌ Target lost');
       scanningHint.classList.add('visible');
       componentMenu.classList.remove('visible');
       hideARComponents();
@@ -1121,6 +1219,7 @@
 
     // Hacer los hotspots tap-eables
     sceneEl.addEventListener('loaded', () => {
+      console.log('🎬 A-Frame scene loaded');
       const boardPlane = document.querySelector('#ar-board');
       if (boardPlane) {
         boardPlane.setAttribute('class', 'clickable');
